@@ -2,97 +2,91 @@
 # image with the mouse 
 
 #Import the libraries pygame and math 
-import pygame 
+import pygame as pg
 import math 
 from pygame.locals import *
+import Api
 
 # Take colors input 
-RED = (255, 0, 0) 
-BLACK = (0, 0, 0) 
-YELLOW = (255, 255, 0) 
+pg.init()
+screen = pg.display.set_mode((640, 480))
+COLOR_INACTIVE = pg.Color('lightskyblue3')
+COLOR_ACTIVE = pg.Color('dodgerblue2')
+FONT = pg.font.Font(None, 32)
+txt = ""
 
-#Construct the GUI game 
-pygame.init() 
+class InputBox:
 
-#Set dimensions of game GUI 
-w, h = 600, 440
-screen = pygame.display.set_mode((w, h)) 
+    def __init__(self, x, y, w, h, text=''):
+        self.rect = pg.Rect(x, y, w, h)
+        self.color = COLOR_INACTIVE
+        self.text = text
+        self.txt_surface = FONT.render(text, True, self.color)
+        self.active = False
 
-# Set running, angle and scale values 
-running = True
-angle = 0
-scale = 1
+    def handle_event(self, event):
+        if event.type == pg.MOUSEBUTTONDOWN:
+            # If the user clicked on the input_box rect.
+            if self.rect.collidepoint(event.pos):
+                # Toggle the active variable.
+                self.active = not self.active
+            else:
+                self.active = False
+            # Change the current color of the input box.
+            self.color = COLOR_ACTIVE if self.active else COLOR_INACTIVE
+        if event.type == pg.KEYDOWN:
+            if self.active:
+                if event.key == pg.K_RETURN:
+                    print(self.text)
+                    global txt
+                    txt = Api.Searchcard(self.text)
+                    self.text = ''
+                elif event.key == pg.K_BACKSPACE:
+                    self.text = self.text[:-1]
+                else:
+                    self.text += event.unicode
+                # Re-render the text.
+                self.txt_surface = FONT.render(self.text, True, self.color)
 
-# Take image as input 
-img_logo = pygame.image.load('stuffnthings.png') 
-img_logo.convert() 
+    def update(self):
+        # Resize the box if the text is too long.
+        width = max(200, self.txt_surface.get_width()+10)
+        self.rect.w = width
 
-# Draw a rectangle around the image 
-rect_logo = img_logo.get_rect() 
-pygame.draw.rect(img_logo, RED, rect_logo, 1) 
+    def draw(self, screen):
+        # Blit the text.
+        screen.blit(self.txt_surface, (self.rect.x+5, self.rect.y+5))
+        # Blit the rect.
+        text1 = FONT.render(txt, True, COLOR_INACTIVE)
+        textRect1 = text1.get_rect()
+        textRect1.center = (250, 250)
+        screen.blit(text1, textRect1)
+        pg.draw.rect(screen, self.color, self.rect, 2)
 
-# Set the center and mouse position 
-center = w//2, h//2
-mouse = pygame.mouse.get_pos() 
+def main():
+    clock = pg.time.Clock()
+    input_box1 = InputBox(100, 100, 140, 32)
+    input_boxes = [input_box1]
+    done = False
 
-#Store the image in a new variable 
-#Construct the rectangle around image 
-img = img_logo 
-rect = img.get_rect() 
-rect.center = center 
+    while not done:
+        for event in pg.event.get():
+            if event.type == pg.QUIT:
+                done = True
+            for box in input_boxes:
+                box.handle_event(event)
 
-# Setting what happens when game is 
-# in running state 
-while running: 
-	for event in pygame.event.get(): 
+        for box in input_boxes:
+            box.update()
 
-		# Close if the user quits the game 
-		if event.type == QUIT: 
-			running = False
+        screen.fill((30, 30, 30))
+        for box in input_boxes:
+            box.draw(screen)
 
-		# Set at which angle the image will 
-		# move left or right 
-		if event.type == KEYDOWN: 
-			if event.key == K_a: 
-				if event.mod & KMOD_SHIFT: 
-					angle -= 5
-				else: 
-					angle += 5
+        pg.display.flip()
+        clock.tick(30)
 
-			# Set at what ratio the image will 
-			# decrease or increase 
-			elif event.key == K_a: 
-				if event.mod & KMOD_SHIFT: 
-					scale /= 1.5
-				else: 
-					scale *= 1.5
-				
-		# Move the image with the specified coordinates, 
-		# angle and scale		 
-		elif event.type == MOUSEMOTION: 
-			mouse = event.pos 
-			x = mouse[0] - center[0] 
-			y = mouse[1] - center[1] 
-			d = math.sqrt(x ** 2 + y ** 2) 
-			angle = math.degrees(-math.atan2(y, x)) 
-			scale = abs(5 * d / w) 
-			img = pygame.transform.rotozoom(img_logo, angle, scale) 
-			rect = img.get_rect() 
-			rect.center = center 
-	
-	# Set screen color and image on screen 
-	screen.fill(YELLOW) 
-	screen.blit(img, rect) 
 
-	# Draw the rectangle, line and circle through 
-	# which image can be transformed 
-	pygame.draw.rect(screen, BLACK, rect, 3) 
-	pygame.draw.line(screen, RED, center, mouse, 2) 
-	pygame.draw.circle(screen, RED, center, 6, 1) 
-	pygame.draw.circle(screen, BLACK, mouse, 6, 2) 
-	
-	# Update the GUI game 
-	pygame.display.update() 
-
-# Quit the GUI game 
-pygame.quit()
+if __name__ == '__main__':
+    main()
+    pg.quit()
