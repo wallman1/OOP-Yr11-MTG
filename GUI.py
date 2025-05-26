@@ -14,6 +14,8 @@ COLOR_INACTIVE = pg.Color('lightskyblue3')
 COLOR_ACTIVE = pg.Color('dodgerblue2')
 FONT = pg.font.Font(None, 32)
 txt = ""
+img = pg.image.load("C:\Users\willi\OneDrive\Documents\stuffmcstuff\OOP-YR11-MTG\image.png").convert()
+screen.blit(img, (0, 0))
 
 class InputBox:
 
@@ -60,6 +62,7 @@ class InputBox:
         text1 = FONT.render(txt, True, COLOR_INACTIVE)
         textRect1 = text1.get_rect()
         textRect1.center = (250, 250)
+        pg.display.flip()
         screen.blit(text1, textRect1)
         pg.draw.rect(screen, self.color, self.rect, 2)
 

@@ -1,6 +1,9 @@
 import scrython
 import requests
 import time
+from requests import get
+from json import loads
+from shutil import copyfileobj
 
 def Searchcard(getCard):
     try:
@@ -65,5 +68,65 @@ def Searchcard(getCard):
             id_ = card['id']
             card = scrython.cards.Id(id=id_)
             card_list.append(card)
-
         return card_list
+
+def get_image(name):
+    card = scrython.cards.Named(fuzzy=name)
+    cardname=card.name()
+    card = loads(get(f"https://api.scryfall.com/cards/search?q={cardname}").text)
+ 
+    # Get the image URL
+    img_url = card['data'][0]['image_uris']['png']
+        
+    # Save the image
+    with open('image.png', 'wb') as out_file:
+        copyfileobj(get(img_url, stream = True).raw, out_file)
+
+class creature():
+    def __init__(self):
+        pass
+
+    def haste():
+        pass
+
+    def detain():
+        pass
+
+    def evolve():
+        pass
+
+    def hexproof():
+        pass
+
+    def amass():
+        pass
+
+    def flying():
+        pass
+
+    def reach():
+        pass
+
+    def deathtouch():
+        pass
+
+    def doublestrike():
+        pass
+
+    def firststrike():
+        pass
+
+    def trample():
+        pass
+
+    def defender():
+        pass
+
+    def lifelink():
+        pass
+
+    def menace():
+        pass
+
+    def vigilance():
+        pass
