@@ -1,6 +1,6 @@
 import pygame
 import sys
-from Api import search_cards, get_image_from_url, save_to_deck, load_deck
+from Api import search_cards, get_image_from_url, save_to_deck, load_deck,search_cards_exact
 
 # --- Pygame setup ---
 pygame.init()
@@ -93,8 +93,8 @@ while running:
                             if get_image_from_url(img_url):
                                 card_image = pygame.image.load("image.png")
 
-                if save_button.collidepoint(event.pos) and selected_card and deck_name:
-                    save_to_deck(deck_name, selected_card['name'])
+                if save_button.collidepoint(event.pos): #and selected_card and deck_name:
+                    save_to_deck(selected_card['name'])
 
             elif event.type == pygame.KEYDOWN:
                 if active:
@@ -121,7 +121,7 @@ while running:
                 for i, btn in enumerate(load_deck_buttons):
                     if btn.collidepoint(event.pos):
                         current_deck = deck_cards[i]
-                        deck_cards = load_deck().get(current_deck, [])
+                        deck_cards = load_deck()
                         state = DECK_VIEW
 
         elif state == DECK_VIEW:
@@ -195,7 +195,7 @@ while running:
             # Hover detection and card image
             if 100 <= mouse_pos[0] <= 700 and y <= mouse_pos[1] <= y + 40:
                 try:
-                    temp = search_cards(name)
+                    temp = search_cards_exact(name)
                     if temp and 'image_uris' in temp[0]:
                         if get_image_from_url(temp[0]['image_uris']['png']):
                             hover_img = pygame.image.load("image.png")

@@ -9,8 +9,17 @@ from requests import get
 DECK_FILE = "deck.json"
 
 def search_cards(query):
+    print("start code")
     try:
         response = scrython.cards.Search(q=query)
+        return response.data()
+    except Exception as e:
+        print("Search failed:", e)
+        return []
+
+def search_cards_exact(query):
+    try:
+        response = scrython.cards.Search(exact=query)
         return response.data()
     except Exception as e:
         print("Search failed:", e)
@@ -28,6 +37,7 @@ def get_image_from_url(url):
     return False
 
 def save_to_deck(card_name):
+    print("start code")
     deck = []
     if os.path.exists(DECK_FILE):
         with open(DECK_FILE, "r") as f:
@@ -35,6 +45,7 @@ def save_to_deck(card_name):
                 deck = json.load(f)
             except json.JSONDecodeError:
                 deck = []
+                print("card was not added")
 
     deck.append(card_name)
 
