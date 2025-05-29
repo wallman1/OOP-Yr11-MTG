@@ -19,7 +19,7 @@ def search_cards(query):
 
 def search_cards_exact(query):
     try:
-        response = scrython.cards.Search(exact=query)
+        response = scrython.cards.Search(q=query)
         return response.data()
     except Exception as e:
         print("Search failed:", e)

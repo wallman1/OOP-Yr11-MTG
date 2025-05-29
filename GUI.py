@@ -1,6 +1,6 @@
 import pygame
 import sys
-from Api import search_cards, get_image_from_url, save_to_deck, load_deck,search_cards_exact
+from Api import search_cards, get_image_from_url, save_to_deck, load_deck, search_cards_exact
 
 # --- Pygame setup ---
 pygame.init()
@@ -93,7 +93,7 @@ while running:
                             if get_image_from_url(img_url):
                                 card_image = pygame.image.load("image.png")
 
-                if save_button.collidepoint(event.pos): #and selected_card and deck_name:
+                if save_button.collidepoint(event.pos):
                     save_to_deck(selected_card['name'])
 
             elif event.type == pygame.KEYDOWN:
@@ -192,7 +192,6 @@ while running:
             name_surf = font.render(name, True, WHITE)
             screen.blit(name_surf, (100, y))
 
-            # Hover detection and card image
             if 100 <= mouse_pos[0] <= 700 and y <= mouse_pos[1] <= y + 40:
                 try:
                     temp = search_cards_exact(name)
@@ -200,12 +199,13 @@ while running:
                         if get_image_from_url(temp[0]['image_uris']['png']):
                             hover_img = pygame.image.load("image.png")
                             scaled_hover = pygame.transform.scale(hover_img, (244, 340))
-                            screen.blit(scaled_hover, (WIDTH - 260, y))
-                except:
-                    pass
+                            screen.blit(scaled_hover, (WIDTH - 260, 120))
+                except Exception as e:
+                    print(f"Hover image error: {e}")
 
     pygame.display.flip()
     clock.tick(60)
 
 pygame.quit()
 sys.exit()
+
