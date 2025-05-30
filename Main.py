@@ -27,6 +27,16 @@ def parse_mana_cost(cost):
     import re
     return re.findall(r'{(.*?)}', cost)
 
+def add_to_pool(amount,type):
+    player["mana_pool"][type] += amount
+
+def tapland(card, amount, type):
+    if card.is_tapped == False:
+        add_to_pool(amount,type)
+        card.is_tapped = True
+        print("untap")
+        #card.is_tapped = False
+
 def can_pay_cost(cost_list, pool):
     temp_pool = pool.copy()
     for symbol in cost_list:
@@ -57,6 +67,13 @@ def pay_cost(cost_list, pool):
         elif symbol in pool:
             pool[symbol] -= 1
 
+def blitRotateCenter(image, angle):
+
+    rotated_image = pygame.transform.rotate(image, angle)
+    new_rect = rotated_image.get_rect(center = image.get_rect().center)
+
+    pygame.surface.blit(rotated_image, new_rect)
+
 def load_deck(file_path="my_deck.json"):
     if not os.path.exists(file_path):
         print("Deck file not found.")
@@ -69,9 +86,10 @@ def load_deck(file_path="my_deck.json"):
         if data:
             power = int(data.get("power", 0)) if data.get("power") else 0
             toughness = int(data.get("toughness", 0)) if data.get("toughness") else 0
+            card_type = data.get("type_line")
             mana_cost = data.get("mana_cost", "")
             image_path = download_card_image(name)
-            deck.append(Card(name, power, toughness, image_path, mana_cost))
+            deck.append(Card(name, power, toughness, card_type, image_path, mana_cost))
     random.shuffle(deck)
     return deck
 
@@ -95,6 +113,15 @@ def draw_hand(hand):
     for i, card in enumerate(hand):
         draw_card_image(card, 20 + i * 110, HEIGHT - 150)
 
+def untap():
+    count = 0
+    for card in player["battlefield"]:
+        card.is_tapped = False
+        count+=1
+
+def main():
+    pass
+
 def draw_battlefield(field):
     for i, card in enumerate(field):
         draw_card_image(card, 20 + i * 110, HEIGHT // 2 - 70)
@@ -112,7 +139,9 @@ for _ in range(7):
 
 dragging_card = None
 offset_x = offset_y = 0
-phase = "main"
+phasenames = ("Untap", "Draw", "Main")
+phases = [untap(),draw_card(player),main()]
+count = 0
 
 running = True
 while running:
@@ -122,7 +151,7 @@ while running:
         if event.type == pygame.QUIT:
             running = False
 
-        elif event.type == pygame.MOUSEBUTTONDOWN:
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             for card in player["hand"]:
                 if card.rect.collidepoint(event.pos):
                     dragging_card = card
@@ -130,7 +159,25 @@ while running:
                     offset_y = card.rect.y - event.pos[1]
                     break
 
-        elif event.type == pygame.MOUSEBUTTONUP:
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+            if card.rect.collidepoint(event.pos):
+               if "land" in card.card_type:
+                    if card.name == "island":
+                        tapland(card,1,"U")
+
+                    if card.name == "mountain":
+                        add_to_pool(1,"R")
+
+                    if card.name == "forest":
+                        add_to_pool(1,"G")
+
+                    if card.name == "swamp":
+                        add_to_pool(1,"B")
+
+                    if card.name == "plains":
+                        add_to_pool(1,"W")
+
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if dragging_card:
                 # Check if dropped in battlefield area
                 if dragging_card.rect.y < HEIGHT and dragging_card.rect.y > HEIGHT // 2:
@@ -148,14 +195,14 @@ while running:
 
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
-                # Simulate untapping lands to add mana
-                for card in player["battlefield"]:
-                    if "Forest" in card.name:
-                        player["mana_pool"]["G"] += 1
+                count =+1
+                phases[1]
+            # Simulate untapping lands to add mana
+
             elif event.key == pygame.K_d:
                 draw_card(player)
 
-    screen.blit(font.render(f"Phase: {phase}", True, (255, 255, 255)), (20, 10))
+    screen.blit(font.render(f"Phase: {phasenames[0]}", True, (255, 255, 255)), (20, 10))
     draw_hand(player["hand"])
     draw_battlefield(player["battlefield"])
     draw_mana_pool(player["mana_pool"])

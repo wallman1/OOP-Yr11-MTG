@@ -47,14 +47,6 @@ def draw_ui():
     text = font.render(search_text, True, (255, 255, 255))
     screen.blit(text, (25, 25))
 
-    # Save button
-    pygame.draw.rect(screen, (70, 150, 70), save_button)
-    screen.blit(font.render("Save", True, (255, 255, 255)), (save_button.x + 25, save_button.y + 5))
-
-    # Load button
-    pygame.draw.rect(screen, (70, 70, 150), load_button)
-    screen.blit(font.render("Load", True, (255, 255, 255)), (load_button.x + 25, load_button.y + 5))
-
     # Card image
     if card_img:
         screen.blit(pygame.transform.scale(card_img, (200, 280)), (20, 70))
@@ -80,12 +72,6 @@ def main():
                     input_active = True
                 else:
                     input_active = False
-
-                # Check Save/Load buttons
-                if save_button.collidepoint(event.pos):
-                    save_deck()
-                elif load_button.collidepoint(event.pos):
-                    load_deck()
 
 
             elif event.type == pygame.KEYDOWN and input_active:
