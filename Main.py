@@ -27,15 +27,14 @@ def parse_mana_cost(cost):
     import re
     return re.findall(r'{(.*?)}', cost)
 
-def add_to_pool(amount,type):
+def add_to_pool(amount, type):
     player["mana_pool"][type] += amount
 
-def tapland(card, amount, type):
-    if card.is_tapped == False:
-        add_to_pool(amount,type)
+def tap_land(card, amount, type):
+    if not card.is_tapped:
+        add_to_pool(amount, type)
         card.is_tapped = True
-        print("untap")
-        #card.is_tapped = False
+        print(f"Tapped {card.name} for {type} mana")
 
 def can_pay_cost(cost_list, pool):
     temp_pool = pool.copy()
@@ -45,7 +44,6 @@ def can_pay_cost(cost_list, pool):
             total_available = sum(temp_pool.values())
             if total_available < generic:
                 return False
-            # Subtract from any mana
             for k in temp_pool:
                 while generic > 0 and temp_pool[k] > 0:
                     temp_pool[k] -= 1
@@ -66,13 +64,6 @@ def pay_cost(cost_list, pool):
                     generic -= 1
         elif symbol in pool:
             pool[symbol] -= 1
-
-def blitRotateCenter(image, angle):
-
-    rotated_image = pygame.transform.rotate(image, angle)
-    new_rect = rotated_image.get_rect(center = image.get_rect().center)
-
-    pygame.surface.blit(rotated_image, new_rect)
 
 def load_deck(file_path="my_deck.json"):
     if not os.path.exists(file_path):
@@ -102,6 +93,8 @@ def draw_card_image(card, x, y):
     try:
         img = pygame.image.load(card.image_path)
         img = pygame.transform.scale(img, (100, 140))
+        if card.is_tapped:
+            img = pygame.transform.rotate(img, 90)
         screen.blit(img, (x, y))
     except:
         pygame.draw.rect(screen, (100, 0, 0), (x, y, 100, 140))
@@ -112,15 +105,6 @@ def draw_card_image(card, x, y):
 def draw_hand(hand):
     for i, card in enumerate(hand):
         draw_card_image(card, 20 + i * 110, HEIGHT - 150)
-
-def untap():
-    count = 0
-    for card in player["battlefield"]:
-        card.is_tapped = False
-        count+=1
-
-def main():
-    pass
 
 def draw_battlefield(field):
     for i, card in enumerate(field):
@@ -133,15 +117,25 @@ def draw_mana_pool(pool):
         screen.blit(font.render(f"{color}: {amt}", True, (255, 255, 255)), (x + 5, y + 5))
         y += 30
 
+def untap():
+    for card in player["battlefield"]:
+        card.is_tapped = False
+
+def main_phase():
+    pass
+
+def draw_phase():
+    draw_card(player)
+
+phases = [untap, draw_phase, main_phase]
+current_phase = 0
+
 player["library"] = load_deck()
 for _ in range(7):
     draw_card(player)
 
 dragging_card = None
 offset_x = offset_y = 0
-phasenames = ("Untap", "Draw", "Main")
-phases = [untap(),draw_card(player),main()]
-count = 0
 
 running = True
 while running:
@@ -160,27 +154,23 @@ while running:
                     break
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
-            if card.rect.collidepoint(event.pos):
-               if "land" in card.card_type:
-                    if card.name == "island":
-                        tapland(card,1,"U")
-
-                    if card.name == "mountain":
-                        add_to_pool(1,"R")
-
-                    if card.name == "forest":
-                        add_to_pool(1,"G")
-
-                    if card.name == "swamp":
-                        add_to_pool(1,"B")
-
-                    if card.name == "plains":
-                        add_to_pool(1,"W")
+            for card in player["battlefield"]:
+                if card.rect.collidepoint(event.pos) and not card.is_tapped:
+                    name = card.name.lower()
+                    if "island" in name:
+                        tap_land(card, 1, "U")
+                    elif "mountain" in name:
+                        tap_land(card, 1, "R")
+                    elif "forest" in name:
+                        tap_land(card, 1, "G")
+                    elif "swamp" in name:
+                        tap_land(card, 1, "B")
+                    elif "plains" in name:
+                        tap_land(card, 1, "W")
 
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if dragging_card:
-                # Check if dropped in battlefield area
-                if dragging_card.rect.y < HEIGHT and dragging_card.rect.y > HEIGHT // 2:
+                if HEIGHT // 2 < dragging_card.rect.y < HEIGHT:
                     cost_list = parse_mana_cost(dragging_card.mana_cost)
                     if can_pay_cost(cost_list, player["mana_pool"]):
                         pay_cost(cost_list, player["mana_pool"])
@@ -195,14 +185,13 @@ while running:
 
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
-                count =+1
-                phases[1]
-            # Simulate untapping lands to add mana
+                current_phase = (current_phase + 1) % len(phases)
+                phases[current_phase]()
 
             elif event.key == pygame.K_d:
                 draw_card(player)
 
-    screen.blit(font.render(f"Phase: {phasenames[0]}", True, (255, 255, 255)), (20, 10))
+    screen.blit(font.render(f"Phase: {['Untap', 'Draw', 'Main'][current_phase]}", True, (255, 255, 255)), (20, 10))
     draw_hand(player["hand"])
     draw_battlefield(player["battlefield"])
     draw_mana_pool(player["mana_pool"])
