@@ -11,3 +11,10 @@ class Card:
         self.rect = pygame.Rect(0, 0, 100, 140)
         self.dragging = False
         self.is_tapped = False
+
+class Creature(Card):
+    def __init__(self, name, power, toughness, card_type, image_path=None, mana_cost=""):
+        super().__init__(name, power, toughness, card_type, image_path, mana_cost)
+        self.detained = 1
+        self.deathtouch = False
+        self.lifelink = False

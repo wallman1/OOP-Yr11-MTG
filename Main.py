@@ -3,7 +3,7 @@ import json
 import os
 import random
 from scryfall import download_card_image, get_card_data
-from Cards import Card
+from Cards import Card, Creature
 
 pygame.init()
 WIDTH, HEIGHT = 1200, 800
@@ -11,11 +11,13 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("MTG Game with Zones, Mana, Combat")
 font = pygame.font.SysFont(None, 24)
 clock = pygame.time.Clock()
-
+global landplaced 
+landplaced= False
 ASSETS_DIR = "assets"
 
 # Player zones
 player = {
+    "Health": 20,
     "library": [],
     "hand": [],
     "battlefield": [],
@@ -29,6 +31,14 @@ def parse_mana_cost(cost):
 
 def add_to_pool(amount, type):
     player["mana_pool"][type] += amount
+
+def resetmana():
+    player["mana_pool"]["G"] = 0
+    player["mana_pool"]["R"] = 0
+    player["mana_pool"]["U"] = 0
+    player["mana_pool"]["B"] = 0
+    player["mana_pool"]["W"] = 0
+    player["mana_pool"]["C"] = 0
 
 def tap_land(card, amount, type):
     if not card.is_tapped:
@@ -120,6 +130,7 @@ def draw_mana_pool(pool):
 def untap():
     for card in player["battlefield"]:
         card.is_tapped = False
+    resetmana()
 
 def main_phase():
     pass
@@ -148,10 +159,21 @@ while running:
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             for card in player["hand"]:
                 if card.rect.collidepoint(event.pos):
-                    dragging_card = card
-                    offset_x = card.rect.x - event.pos[0]
-                    offset_y = card.rect.y - event.pos[1]
-                    break
+                    if phases[current_phase] == main_phase:
+                        if "land" in card.card_type:
+                            if landplaced == False:
+                                landplaced=True
+                                dragging_card = card
+                                offset_x = card.rect.x - event.pos[0]
+                                offset_y = card.rect.y - event.pos[1]
+                                pass
+                            else:
+                                pass
+                        else:
+                            dragging_card = card
+                            offset_x = card.rect.x - event.pos[0]
+                            offset_y = card.rect.y - event.pos[1]
+                            break
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
             for card in player["battlefield"]:
@@ -167,6 +189,15 @@ while running:
                         tap_land(card, 1, "B")
                     elif "plains" in name:
                         tap_land(card, 1, "W")
+                    else:
+                        card.is_tapped = True
+
+                    #if "Creature" in card.card_type:
+                        
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 2:
+            for card in player["battlefield"]:
+                if card.rect.collidepoint(event.pos) and card.is_tapped:
+                    card.is_tapped = False
 
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if dragging_card:
@@ -187,10 +218,32 @@ while running:
             if event.key == pygame.K_SPACE:
                 current_phase = (current_phase + 1) % len(phases)
                 phases[current_phase]()
+                if phases[current_phase] == untap:
+                    landplaced = False
 
             elif event.key == pygame.K_d:
                 draw_card(player)
 
+            elif event.key == pygame.K_0:
+                add_to_pool(1,"G")
+
+            elif event.key == pygame.K_9:
+                add_to_pool(1,"R")
+
+            elif event.key == pygame.K_8:
+                add_to_pool(1,"U")
+
+            elif event.key == pygame.K_7:
+                add_to_pool(1,"B")
+
+            elif event.key == pygame.K_6:
+                add_to_pool(1,"W")
+
+            elif event.key == pygame.K_5:
+                add_to_pool(1,"C")
+
+            
+    screen.blit(font.render(f"Player 1: {player["Health"]}", True, (255,255,255)), (20,30))
     screen.blit(font.render(f"Phase: {['Untap', 'Draw', 'Main'][current_phase]}", True, (255, 255, 255)), (20, 10))
     draw_hand(player["hand"])
     draw_battlefield(player["battlefield"])
