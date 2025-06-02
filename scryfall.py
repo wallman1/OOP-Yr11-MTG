@@ -3,12 +3,21 @@ import requests
 import os
 
 ASSETS_DIR = "assets"
-def get_card_data(card_name):
-    response = requests.get(f"https://api.scryfall.com/cards/named?exact={card_name}")
-    if response.status_code != 200:
-        print(f"Card not found: {card_name}")
-        return None
-    return response.json()
+
+def get_card_data(card_name, retries=3, delay=1):
+    url = f"https://api.scryfall.com/cards/named?exact={card_name}"
+    for attempt in range(retries):
+        try:
+            response = requests.get(url, timeout=5)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            print(f"Attempt {attempt+1} failed for {card_name}: {e}")
+            if attempt < retries - 1:
+                time.sleep(delay)
+            else:
+                print(f"Giving up on {card_name}")
+                return None
 
 def download_card_image(card_name):
     data = get_card_data(card_name)
