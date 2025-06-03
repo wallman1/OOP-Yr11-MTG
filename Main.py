@@ -3,7 +3,7 @@ import json
 import os
 import random
 from scryfall import download_card_image, get_card_data
-from Cards import Card, Creature
+from Cards import Card, Creature, Land, Artifact, Sorcery
 
 pygame.init()
 WIDTH, HEIGHT = 1200, 800
@@ -16,24 +16,26 @@ landplaced = False
 ASSETS_DIR = "assets"
 
 # Players
-players = [
-    {
+player1 ={
         "Health": 20,
         "library": [],
         "hand": [],
         "battlefield": [],
         "graveyard": [],
-        "mana_pool": {"G": 0, "R": 0, "U": 0, "B": 0, "W": 0, "C": 0},
-    },
-    {
-        "Health": 20,
-        "library": [],
-        "hand": [],
-        "battlefield": [],
-        "graveyard": [],
-        "mana_pool": {"G": 0, "R": 0, "U": 0, "B": 0, "W": 0, "C": 0},
+        "mana_pool": {"G": 0, "R": 0, "U": 0, "B": 0, "W": 0, "C": 0}
     }
-]
+
+player2 ={
+        "Health": 20,
+        "library": [],
+        "hand": [],
+        "battlefield": [],
+        "graveyard": [],
+        "mana_pool": {"G": 0, "R": 0, "U": 0, "B": 0, "W": 0, "C": 0}
+    }
+
+players = [player1, player2]
+
 current_player = 0
 
 def parse_mana_cost(cost):
@@ -52,6 +54,10 @@ def tap_land(player, card, amount, type):
         add_to_pool(player, amount, type)
         card.is_tapped = True
         print(f"Tapped {card.name} for {type} mana")
+
+def tap_creature(card):
+    if not card.is_tapped:
+        card.is_tapped = True
 
 def can_pay_cost(cost_list, pool):
     temp_pool = pool.copy()
@@ -82,6 +88,29 @@ def pay_cost(cost_list, pool):
         elif symbol in pool:
             pool[symbol] -= 1
 
+def loadload_deck(file):
+    def load_deck(file_path=file):
+        if not os.path.exists(file_path):
+            print("Deck file not found.")
+            return []
+        with open(file_path, "r") as f:
+            names = json.load(f)
+        deck = []
+        for name in names:
+            data = get_card_data(name)
+            if data:
+                power = int(data.get("power", 0)) if data.get("power") else 0
+                toughness = int(data.get("toughness", 0)) if data.get("toughness") else 0
+                card_type = data.get("type_line", "")
+                mana_cost = data.get("mana_cost", "")
+                image_path = download_card_image(name)
+                if "Creature" in card_type:
+                    deck.append(Creature(name, power, toughness, card_type, image_path, mana_cost))
+                else:
+                    deck.append(Card(name, power, toughness, card_type, image_path, mana_cost))
+        random.shuffle(deck)
+        return deck
+
 def load_deck(file_path="my_deck.json"):
     if not os.path.exists(file_path):
         print("Deck file not found.")
@@ -95,6 +124,7 @@ def load_deck(file_path="my_deck.json"):
             power = int(data.get("power", 0)) if data.get("power") else 0
             toughness = int(data.get("toughness", 0)) if data.get("toughness") else 0
             card_type = data.get("type_line", "")
+            print(card_type)
             mana_cost = data.get("mana_cost", "")
             image_path = download_card_image(name)
             if "Creature" in card_type:
@@ -194,11 +224,14 @@ while running:
             for card in players[current_player]["battlefield"]:
                 if card.rect.collidepoint(event.pos) and not card.is_tapped:
                     name = card.name.lower()
-                    tap_land(players[current_player], card, 1, "G" if "forest" in name else
-                                                           "U" if "island" in name else
-                                                           "R" if "mountain" in name else
-                                                           "B" if "swamp" in name else
-                                                           "W" if "plains" in name else "C")
+                    if "Land" in card.card_type:
+                        tap_land(players[current_player], card, 1, "G" if "forest" in name else
+                                                            "U" if "island" in name else
+                                                            "R" if "mountain" in name else
+                                                            "B" if "swamp" in name else
+                                                            "W" if "plains" in name else "C")
+                    elif "Creature" in card.card_type:
+                        tap_creature(card)
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 2:
             for card in players[current_player]["battlefield"]:
@@ -237,7 +270,7 @@ while running:
     screen.blit(font.render(f"Phase: {['Untap', 'Draw', 'Main'][current_phase]}", True, (255,255,255)), (WIDTH // 2 - 100, 40))
 
     draw_hand(players[0]["hand"], HEIGHT - 150)
-    draw_hand(players[1]["hand"], 200)
+    draw_hand(players[1]["hand"], 250)
     draw_battlefield(players[0]["battlefield"], HEIGHT // 2 + 80)
     draw_battlefield(players[1]["battlefield"], HEIGHT // 2 - 220)
     draw_mana_pool(players[0]["mana_pool"], WIDTH - 150, HEIGHT - 200)
