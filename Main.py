@@ -3,11 +3,12 @@ import json
 import os
 import random
 from scryfall import download_card_image, get_card_data
-from Cards import Card, Creature, Land, Artifact, Sorcery
+from Cards import Card, Creature
 
 pygame.init()
-WIDTH, HEIGHT = 1200, 800
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
+infoObject = pygame.display.Info()
+WIDTH, HEIGHT = infoObject.current_w, infoObject.current_h
+screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
 pygame.display.set_caption("MTG Game with Zones, Mana, Combat")
 font = pygame.font.SysFont(None, 24)
 clock = pygame.time.Clock()
@@ -16,27 +17,37 @@ landplaced = False
 ASSETS_DIR = "assets"
 
 # Players
-player1 ={
+players = [
+    {
         "Health": 20,
         "library": [],
         "hand": [],
         "battlefield": [],
         "graveyard": [],
-        "mana_pool": {"G": 0, "R": 0, "U": 0, "B": 0, "W": 0, "C": 0}
-    }
-
-player2 ={
+        "mana_pool": {"G": 0, "R": 0, "U": 0, "B": 0, "W": 0, "C": 0},
+    },
+    {
         "Health": 20,
         "library": [],
         "hand": [],
         "battlefield": [],
         "graveyard": [],
-        "mana_pool": {"G": 0, "R": 0, "U": 0, "B": 0, "W": 0, "C": 0}
+        "mana_pool": {"G": 0, "R": 0, "U": 0, "B": 0, "W": 0, "C": 0},
     }
-
-players = [player1, player2]
-
+]
 current_player = 0
+attackers = []
+blockers = {}
+selecting_attackers = False
+selecting_blockers = False
+combat_animations = []
+
+stack = []
+
+combat_keywords = {
+    "first strike": "first_strike",
+    "trample": "trample",
+}
 
 def parse_mana_cost(cost):
     import re
@@ -54,10 +65,6 @@ def tap_land(player, card, amount, type):
         add_to_pool(player, amount, type)
         card.is_tapped = True
         print(f"Tapped {card.name} for {type} mana")
-
-def tap_creature(card):
-    if not card.is_tapped:
-        card.is_tapped = True
 
 def can_pay_cost(cost_list, pool):
     temp_pool = pool.copy()
@@ -88,28 +95,11 @@ def pay_cost(cost_list, pool):
         elif symbol in pool:
             pool[symbol] -= 1
 
-def loadload_deck(file):
-    def load_deck(file_path=file):
-        if not os.path.exists(file_path):
-            print("Deck file not found.")
-            return []
-        with open(file_path, "r") as f:
-            names = json.load(f)
-        deck = []
-        for name in names:
-            data = get_card_data(name)
-            if data:
-                power = int(data.get("power", 0)) if data.get("power") else 0
-                toughness = int(data.get("toughness", 0)) if data.get("toughness") else 0
-                card_type = data.get("type_line", "")
-                mana_cost = data.get("mana_cost", "")
-                image_path = download_card_image(name)
-                if "Creature" in card_type:
-                    deck.append(Creature(name, power, toughness, card_type, image_path, mana_cost))
-                else:
-                    deck.append(Card(name, power, toughness, card_type, image_path, mana_cost))
-        random.shuffle(deck)
-        return deck
+def safe_int(value):
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return 0
 
 def load_deck(file_path="my_deck.json"):
     if not os.path.exists(file_path):
@@ -121,10 +111,9 @@ def load_deck(file_path="my_deck.json"):
     for name in names:
         data = get_card_data(name)
         if data:
-            power = int(data.get("power", 0)) if data.get("power") else 0
-            toughness = int(data.get("toughness", 0)) if data.get("toughness") else 0
+            power = safe_int(data.get("power", 0))
+            toughness = safe_int(data.get("toughness", 0))
             card_type = data.get("type_line", "")
-            print(card_type)
             mana_cost = data.get("mana_cost", "")
             image_path = download_card_image(name)
             if "Creature" in card_type:
@@ -174,6 +163,59 @@ def draw_mana_pool(pool, x, y):
         screen.blit(font.render(f"{color}: {amt}", True, (255, 255, 255)), (x + 5, y + 5))
         y += 30
 
+def resolve_combat_stack():
+    while stack:
+        effect = stack.pop()
+        effect()
+
+def handle_combat_animations():
+    for atk, blk in combat_animations:
+        pygame.draw.line(screen, (255, 0, 0), atk.rect.center, blk.rect.center, 4)
+
+def combat_phase():
+    global selecting_attackers, attackers, blockers, combat_animations
+    selecting_attackers = True
+    attackers = []
+    blockers = {}
+    combat_animations = []
+
+def combat_resolution_phase():
+    global attackers, blockers, combat_animations
+    resolve_combat_stack()
+    for attacker in attackers:
+        blocker = blockers.get(attacker)
+        if blocker:
+            combat_animations.append((attacker, blocker))
+            atk_dmg = attacker.power
+            blk_dmg = blocker.power
+
+            if "first strike" in attacker.name.lower():
+                blocker.toughness -= atk_dmg
+                if blocker.toughness <= 0:
+                    players[1 - current_player]["battlefield"].remove(blocker)
+                    players[1 - current_player]["graveyard"].append(blocker)
+                else:
+                    attacker.toughness -= blk_dmg
+            else:
+                attacker.toughness -= blk_dmg
+                blocker.toughness -= atk_dmg
+
+            if attacker.toughness <= 0:
+                players[current_player]["battlefield"].remove(attacker)
+                players[current_player]["graveyard"].append(attacker)
+            if blocker.toughness <= 0 and blocker in players[1 - current_player]["battlefield"]:
+                players[1 - current_player]["battlefield"].remove(blocker)
+                players[1 - current_player]["graveyard"].append(blocker)
+        else:
+            damage = attacker.power
+            if "trample" in attacker.name.lower():
+                damage = attacker.power  # Could be adjusted if partial blocked
+            players[1 - current_player]["Health"] -= damage
+
+    attackers = []
+    blockers = []
+    combat_animations = []
+
 def untap():
     resetmana(players[current_player])
     for card in players[current_player]["battlefield"]:
@@ -185,7 +227,7 @@ def draw_phase():
 def main_phase():
     pass
 
-phases = [untap, draw_phase, main_phase]
+phases = [untap, draw_phase, main_phase, combat_phase, combat_resolution_phase]
 current_phase = 0
 
 for p in players:
@@ -205,20 +247,39 @@ while running:
             running = False
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            for card in players[current_player]["hand"]:
-                if card.rect.collidepoint(event.pos):
-                    if phases[current_phase] == main_phase:
-                        if "land" in card.card_type:
-                            if not landplaced:
-                                landplaced = True
+            if selecting_attackers:
+                for card in players[current_player]["battlefield"]:
+                    if card.rect.collidepoint(event.pos) and not card.is_tapped and isinstance(card, Creature):
+                        card.is_tapped = True
+                        attackers.append(card)
+                selecting_attackers = False
+                selecting_blockers = True
+
+            elif selecting_blockers:
+                for card in players[1 - current_player]["battlefield"]:
+                    if card.rect.collidepoint(event.pos) and not card.is_tapped and isinstance(card, Creature):
+                        for atk in attackers:
+                            if atk not in blockers:
+                                blockers[atk] = card
+                                card.is_tapped = True
+                                break
+                selecting_blockers = False
+
+            else:
+                for card in players[current_player]["hand"]:
+                    if card.rect.collidepoint(event.pos):
+                        if phases[current_phase] == main_phase:
+                            if "land" in card.card_type:
+                                if not landplaced:
+                                    landplaced = True
+                                    dragging_card = card
+                                    offset_x = card.rect.x - event.pos[0]
+                                    offset_y = card.rect.y - event.pos[1]
+                            else:
                                 dragging_card = card
                                 offset_x = card.rect.x - event.pos[0]
                                 offset_y = card.rect.y - event.pos[1]
-                        else:
-                            dragging_card = card
-                            offset_x = card.rect.x - event.pos[0]
-                            offset_y = card.rect.y - event.pos[1]
-                        break
+                            break
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
             for card in players[current_player]["battlefield"]:
@@ -226,12 +287,12 @@ while running:
                     name = card.name.lower()
                     if "Land" in card.card_type:
                         tap_land(players[current_player], card, 1, "G" if "forest" in name else
-                                                            "U" if "island" in name else
-                                                            "R" if "mountain" in name else
-                                                            "B" if "swamp" in name else
-                                                            "W" if "plains" in name else "C")
+                                                                    "U" if "island" in name else
+                                                                    "R" if "mountain" in name else
+                                                                    "B" if "swamp" in name else
+                                                                    "W" if "plains" in name else "C")
                     elif "Creature" in card.card_type:
-                        tap_creature(card)
+                        card.is_tapped = True
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 2:
             for card in players[current_player]["battlefield"]:
@@ -264,17 +325,57 @@ while running:
             elif event.key == pygame.K_d:
                 draw_card(players[current_player])
 
+            if event.key == pygame.K_SPACE:
+                current_player = 1 - current_player
+                landplaced = False
+                resetmana(players[current_player])
+                for card in players[current_player]["battlefield"]:
+                    card.is_tapped = False
+                print(f"Player {current_player + 1}'s turn")
+
+            # Play card from hand
+            elif event.key in [pygame.K_e, pygame.K_RETURN]:
+                player = players[current_player]
+                hand = player["hand"]
+                if hand:
+                    selected = hand[0]  # Simplified: auto-select first card
+                    if "Land" in selected.card_type:
+                        if not landplaced:
+                            landplaced = True
+                            player["battlefield"].append(selected)
+                            player["hand"].remove(selected)
+                    else:
+                        cost = parse_mana_cost(selected.mana_cost)
+                        if can_pay_cost(cost, player["mana_pool"]):
+                            pay_cost(cost, player["mana_pool"])
+                            player["battlefield"].append(selected)
+                            player["hand"].remove(selected)
+
+            # Tap first untapped land
+            elif event.key in [pygame.K_t]:
+                player = players[current_player]
+                for card in player["battlefield"]:
+                    if "Land" in card.card_type and not card.is_tapped:
+                        name = card.name.lower()
+                        tap_land(player, card, 1, "G" if "forest" in name else
+                                                 "U" if "island" in name else
+                                                 "R" if "mountain" in name else
+                                                 "B" if "swamp" in name else
+                                                 "W" if "plains" in name else "C")
+
     screen.blit(font.render(f"Player 1: {players[0]['Health']}", True, (255,255,255)), (20,10))
     screen.blit(font.render(f"Player 2: {players[1]['Health']}", True, (255,255,255)), (20, HEIGHT - 180))
     screen.blit(font.render(f"Current Turn: Player {current_player + 1}", True, (255,255,255)), (WIDTH // 2 - 100, 10))
-    screen.blit(font.render(f"Phase: {['Untap', 'Draw', 'Main'][current_phase]}", True, (255,255,255)), (WIDTH // 2 - 100, 40))
+    screen.blit(font.render(f"Phase: {['Untap', 'Draw', 'Main', 'Combat', 'Resolution'][current_phase]}", True, (255,255,255)), (WIDTH // 2 - 100, 40))
 
     draw_hand(players[0]["hand"], HEIGHT - 150)
-    draw_hand(players[1]["hand"], 250)
+    draw_hand(players[1]["hand"], 200)
     draw_battlefield(players[0]["battlefield"], HEIGHT // 2 + 80)
     draw_battlefield(players[1]["battlefield"], HEIGHT // 2 - 220)
     draw_mana_pool(players[0]["mana_pool"], WIDTH - 150, HEIGHT - 200)
     draw_mana_pool(players[1]["mana_pool"], WIDTH - 150, 80)
+
+    handle_combat_animations()
 
     pygame.display.flip()
     clock.tick(30)
