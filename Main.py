@@ -318,15 +318,16 @@ while running:
             if event.key == pygame.K_SPACE:
                 current_phase = (current_phase + 1) % len(phases)
                 phases[current_phase]()
+                if phases[current_phase] == combat_resolution_phase:
+                    current_player += 1
                 if phases[current_phase] == untap:
                     landplaced = False
-                    current_player = 1 - current_player
 
             elif event.key == pygame.K_d:
                 draw_card(players[current_player])
 
             if event.key == pygame.K_SPACE:
-                current_player = 1 - current_player
+                current_player = current_player
                 landplaced = False
                 resetmana(players[current_player])
                 for card in players[current_player]["battlefield"]:
