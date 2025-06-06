@@ -68,6 +68,9 @@ def tap_land(player, card, amount, type):
         card.is_tapped = True
         print(f"Tapped {card.name} for {type} mana")
 
+def addlife(player, amount):
+    player["Health"] += amount
+
 def can_pay_cost(cost_list, pool):
     temp_pool = pool.copy()
     for symbol in cost_list:
@@ -321,7 +324,10 @@ while running:
                 current_phase = (current_phase + 1) % len(phases)
                 phases[current_phase]()
                 if phases[current_phase] == combat_resolution_phase:
-                    current_player += 1
+                    if current_player < 1:
+                        current_player += 1
+                    else:
+                        current_player = 0
                 if phases[current_phase] == untap:
                     landplaced = False
 
@@ -389,6 +395,17 @@ while running:
             elif event.key in [pygame.K_5]:
                 player = players[current_player]
                 add_to_pool(player, 1, "C")
+
+            elif event.key in [pygame.K_l]:
+                player = players[current_player]
+                addlife(player,1)
+
+            elif event.key in [pygame.K_j]:
+                player = players[current_player]
+                addlife(player,-1)
+    if players[current_player]["Health"] <= 0:
+        screen.blit(font.render(f"Player {current_player+1} has died", True, (255,255,255)),(500,500))
+
 
     screen.blit(font.render(f"Player 1: {players[0]['Health']}", True, (255,255,255)), (20,10))
     screen.blit(font.render(f"Player 2: {players[1]['Health']}", True, (255,255,255)), (20, HEIGHT - 180))
