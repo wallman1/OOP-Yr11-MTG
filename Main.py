@@ -20,11 +20,12 @@ ASSETS_DIR = "assets"
 players = [
     {
         "Health": 20,
-        "library": [],
+        "library": "my_deck.json",
         "hand": [],
         "battlefield": [],
         "graveyard": [],
         "mana_pool": {"G": 0, "R": 0, "U": 0, "B": 0, "W": 0, "C": 0},
+        "deck": "deck2.json"
     },
     {
         "Health": 20,
@@ -33,6 +34,7 @@ players = [
         "battlefield": [],
         "graveyard": [],
         "mana_pool": {"G": 0, "R": 0, "U": 0, "B": 0, "W": 0, "C": 0},
+        "deck": "my_deck.json"
     }
 ]
 current_player = 0
@@ -101,7 +103,7 @@ def safe_int(value):
     except (ValueError, TypeError):
         return 0
 
-def load_deck(file_path="my_deck.json"):
+def load_deck(file_path):
     if not os.path.exists(file_path):
         print("Deck file not found.")
         return []
@@ -231,7 +233,7 @@ phases = [untap, draw_phase, main_phase, combat_phase, combat_resolution_phase]
 current_phase = 0
 
 for p in players:
-    p["library"] = load_deck()
+    p["library"] = load_deck(p["deck"])
     for _ in range(7):
         draw_card(p)
 
@@ -363,6 +365,30 @@ while running:
                                                  "R" if "mountain" in name else
                                                  "B" if "swamp" in name else
                                                  "W" if "plains" in name else "C")
+                        
+            elif event.key in [pygame.K_0]:
+                player = players[current_player]
+                add_to_pool(player, 1, "G")
+
+            elif event.key in [pygame.K_9]:
+                player = players[current_player]
+                add_to_pool(player, 1, "R")
+
+            elif event.key in [pygame.K_8]:
+                player = players[current_player]
+                add_to_pool(player, 1, "U")
+
+            elif event.key in [pygame.K_7]:
+                player = players[current_player]
+                add_to_pool(player, 1, "B")
+
+            elif event.key in [pygame.K_6]:
+                player = players[current_player]
+                add_to_pool(player, 1, "W")
+
+            elif event.key in [pygame.K_5]:
+                player = players[current_player]
+                add_to_pool(player, 1, "C")
 
     screen.blit(font.render(f"Player 1: {players[0]['Health']}", True, (255,255,255)), (20,10))
     screen.blit(font.render(f"Player 2: {players[1]['Health']}", True, (255,255,255)), (20, HEIGHT - 180))
@@ -370,7 +396,7 @@ while running:
     screen.blit(font.render(f"Phase: {['Untap', 'Draw', 'Main', 'Combat', 'Resolution'][current_phase]}", True, (255,255,255)), (WIDTH // 2 - 100, 40))
 
     draw_hand(players[0]["hand"], HEIGHT - 150)
-    draw_hand(players[1]["hand"], 200)
+    draw_hand(players[1]["hand"], HEIGHT - 1000)
     draw_battlefield(players[0]["battlefield"], HEIGHT // 2 + 80)
     draw_battlefield(players[1]["battlefield"], HEIGHT // 2 - 220)
     draw_mana_pool(players[0]["mana_pool"], WIDTH - 150, HEIGHT - 200)
