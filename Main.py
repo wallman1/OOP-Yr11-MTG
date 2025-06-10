@@ -3,7 +3,7 @@ import json
 import os
 import random
 from scryfall import download_card_image, get_card_data
-from Cards import Card, Creature
+from Cards import Card, Creature, Artifact, Planeswalker
 
 pygame.init()
 infoObject = pygame.display.Info()
@@ -15,6 +15,7 @@ clock = pygame.time.Clock()
 global landplaced 
 landplaced = False
 ASSETS_DIR = "assets"
+pending_triggers = []
 
 # Players
 players = [
@@ -106,27 +107,41 @@ def safe_int(value):
     except (ValueError, TypeError):
         return 0
 
-def load_deck(file_path):
-    if not os.path.exists(file_path):
-        print("Deck file not found.")
-        return []
-    with open(file_path, "r") as f:
-        names = json.load(f)
+
+def load_deck(card_list):
     deck = []
-    for name in names:
-        data = get_card_data(name)
-        if data:
-            power = safe_int(data.get("power", 0))
-            toughness = safe_int(data.get("toughness", 0))
-            card_type = data.get("type_line", "")
-            mana_cost = data.get("mana_cost", "")
-            image_path = download_card_image(name)
-            if "Creature" in card_type:
-                deck.append(Creature(name, power, toughness, card_type, image_path, mana_cost))
-            else:
-                deck.append(Card(name, power, toughness, card_type, image_path, mana_cost))
+    for card_data in card_list:
+        name = card_data["name"]
+        card_type = card_data["type_line"]
+        mana_cost = card_data.get("mana_cost", "")
+        image_uris = card_data.get("image_uris", {})
+        image_path = image_uris.get("normal", "")  # or however you store image_path
+        if "Planeswalker" in card_type:
+            loyalty = int(card_data.get("loyalty", 0))
+            abilities = card_data.get("oracle_text", "").split("\n")  # just a placeholder
+            deck.append(Planeswalker(name, mana_cost, image_path, loyalty, abilities))
+        elif "Artifact" in card_type:
+            deck.append(Artifact(name, mana_cost, image_path))
+        else:
+            deck.append(Card(name, card_type, mana_cost, image_path))
+
     random.shuffle(deck)
     return deck
+
+def parse_planeswalker_abilities(data):
+    # This function should parse the abilities from the card data
+    # For simplicity, we'll return an empty list here
+    return []
+
+def handle_enter_the_battlefield(card, player):
+    if "gain life" in card.oracle_text.lower():
+        import re
+        match = re.search(r"gain (\d+) life", card.oracle_text.lower())
+        if match:
+            amount = int(match.group(1))
+            addlife(player, amount)
+            print(f"{card.name} triggered: Gained {amount} life.")
+
 
 def draw_card(player):
     if player["library"]:
@@ -146,17 +161,23 @@ def draw_card_image(card, x, y):
             print(f"Failed to load image {card.image_path}: {e}")
     else:
         print(f"Image path does not exist: {card.image_path}")
-
     if img is None:
         pygame.draw.rect(screen, (100, 0, 0), (x, y, 100, 140))
         screen.blit(font.render(card.name, True, (255, 255, 255)), (x + 5, y + 60))
-
     screen.blit(font.render(card.mana_cost, True, (255, 255, 0)), (x + 5, y + 5))
-    screen.blit(font.render(f"{card.power}/{card.toughness}", True, (255, 255, 255)), (x + 60, y + 120))
+    if isinstance(card, Creature):
+        screen.blit(font.render(f"{card.power}/{card.toughness}", True, (255, 255, 255)), (x + 60, y + 120))
+    elif isinstance(card, Planeswalker):
+        screen.blit(font.render(f"Loyalty: {card.loyalty}", True, (255, 255, 255)), (x + 5, y + 120))
 
-def draw_hand(hand, y_offset):
+
+
+def draw_hand(hand, y_offset, is_current_player):
     for i, card in enumerate(hand):
-        draw_card_image(card, 20 + i * 110, y_offset)
+        x = 20 + i * 110
+        if is_current_player:
+            pygame.draw.rect(screen, (255, 255, 0), (x - 5, y_offset - 5, 110, 150), 3)
+        draw_card_image(card, x, y_offset, dim=not is_current_player)
 
 def draw_battlefield(field, offset_y):
     for i, card in enumerate(field):
@@ -205,6 +226,13 @@ def combat_resolution_phase():
                 attacker.toughness -= blk_dmg
                 blocker.toughness -= atk_dmg
 
+            if not blocker:
+                damage = attacker.power
+                players[1 - current_player]["Health"] -= damage
+                if "lifelink" in attacker.oracle_text.lower():
+                    players[current_player]["Health"] += damage
+                    print(f"{attacker.name} lifelink: Gained {damage} life.")
+
             if attacker.toughness <= 0:
                 players[current_player]["battlefield"].remove(attacker)
                 players[current_player]["graveyard"].append(attacker)
@@ -212,19 +240,92 @@ def combat_resolution_phase():
                 players[1 - current_player]["battlefield"].remove(blocker)
                 players[1 - current_player]["graveyard"].append(blocker)
         else:
-            damage = attacker.power
-            if "trample" in attacker.name.lower():
-                damage = attacker.power  # Could be adjusted if partial blocked
-            players[1 - current_player]["Health"] -= damage
+            target = attacker.target  # Assume this attribute is set during attacker selection
+            if isinstance(target, Planeswalker):
+                target.loyalty -= attacker.power
+                if target.loyalty <= 0:
+                    players[1 - current_player]["battlefield"].remove(target)
+                    players[1 - current_player]["graveyard"].append(target)
+            else:
+                players[1 - current_player]["Health"] -= attacker.power
 
     attackers = []
     blockers = []
     combat_animations = []
 
+def trigger_card_effect(card, controller):
+    text = card.oracle_text.lower()
+
+    # === One-time effects ===
+    if "draw a card" in text:
+        draw_card(controller)
+
+    # === Buffs ===
+    import re
+    match = re.search(r'gets \+(\d+)/\+(\d+)', text)
+    if match:
+        card.power += int(match.group(1))
+        card.toughness += int(match.group(2))
+
+    # === Damage effects ===
+    match = re.search(r'deals (\d+) damage to any target', text)
+    if match:
+        damage = int(match.group(1))
+        # Simplified: deal to opponent
+        players[1 - current_player]["Health"] -= damage
+        print(f"{card.name} deals {damage} damage to opponent")
+
+    # === Mana abilities ===
+    if "tap:" in text and "add {" in text:
+        color_match = re.search(r'add {([gubrw])}', text)
+        if color_match:
+            color = color_match.group(1).upper()
+            def ability():
+                tap_land(controller, card, 1, color)
+            card.activated_ability = ability
+            print(f"{card.name} gains ability: tap to add {color} mana")
+
+    # === Keyword abilities ===
+    if "flying" in text:
+        card.keywords.append("flying")
+    if "trample" in text:
+        card.keywords.append("trample")
+    if "first strike" in text:
+        card.keywords.append("first strike")
+
+def handle_triggers(phase):
+    for card in players[current_player]["battlefield"]:
+        if "at the beginning of your upkeep" in card.oracle_text.lower() and phase == "upkeep":
+            pending_triggers.append(lambda: draw_card(players[current_player]))
+
+def activate_planeswalker_ability(player, planeswalker, ability_index):
+    if planeswalker.has_activated_ability:
+        print("This planeswalker has already activated an ability this turn.")
+        return
+    if 0 <= ability_index < len(planeswalker.abilities):
+        ability = planeswalker.abilities[ability_index]
+        cost = ability['cost']
+        effect = ability['effect']
+        new_loyalty = planeswalker.loyalty + cost
+        if new_loyalty < 0:
+            print("Not enough loyalty to activate this ability.")
+            return
+        planeswalker.loyalty = new_loyalty
+        effect()
+        planeswalker.has_activated_ability = True
+    else:
+        print("Invalid ability index.")
+
+def activate_artifact(player, artifact):
+    # Define the effect of the artifact
+    pass
+
 def untap():
     resetmana(players[current_player])
     for card in players[current_player]["battlefield"]:
         card.is_tapped = False
+        if isinstance(card, Planeswalker):
+            card.has_activated_ability = False
 
 def draw_phase():
     draw_card(players[current_player])
@@ -274,13 +375,18 @@ while running:
                 for card in players[current_player]["hand"]:
                     if card.rect.collidepoint(event.pos):
                         if phases[current_phase] == main_phase:
+                            print(card)
                             if "land" in card.card_type:
                                 if not landplaced:
                                     landplaced = True
+                                    players[current_player]["battlefield"].append(dragging_card)
+                                    trigger_card_effect(dragging_card, players[current_player])
                                     dragging_card = card
                                     offset_x = card.rect.x - event.pos[0]
                                     offset_y = card.rect.y - event.pos[1]
                             else:
+                                players[current_player]["battlefield"].append(dragging_card)
+                                trigger_card_effect(dragging_card, players[current_player])
                                 dragging_card = card
                                 offset_x = card.rect.x - event.pos[0]
                                 offset_y = card.rect.y - event.pos[1]
@@ -299,6 +405,9 @@ while running:
                     elif "Creature" in card.card_type:
                         card.is_tapped = True
 
+                    elif isinstance(card, Artifact):
+                        activate_artifact(players[current_player], card)
+
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 2:
             for card in players[current_player]["battlefield"]:
                 if card.rect.collidepoint(event.pos) and card.is_tapped:
@@ -306,13 +415,23 @@ while running:
 
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if dragging_card:
-                if HEIGHT // 2 < dragging_card.rect.y < HEIGHT:
+                if (current_player == 0 and HEIGHT // 2 < dragging_card.rect.y < HEIGHT) or \
+                (current_player == 1 and 0 < dragging_card.rect.y < HEIGHT // 2):
                     cost_list = parse_mana_cost(dragging_card.mana_cost)
                     if can_pay_cost(cost_list, players[current_player]["mana_pool"]):
                         pay_cost(cost_list, players[current_player]["mana_pool"])
                         players[current_player]["hand"].remove(dragging_card)
                         players[current_player]["battlefield"].append(dragging_card)
                 dragging_card = None
+
+            if HEIGHT // 2 < dragging_card.rect.y < HEIGHT:
+                cost_list = parse_mana_cost(dragging_card.mana_cost)
+                if can_pay_cost(cost_list, players[current_player]["mana_pool"]):
+                    pay_cost(cost_list, players[current_player]["mana_pool"])
+                    players[current_player]["hand"].remove(dragging_card)
+                    players[current_player]["battlefield"].append(dragging_card)
+                    handle_enter_the_battlefield(dragging_card, players[current_player])
+
 
         elif event.type == pygame.MOUSEMOTION:
             if dragging_card:
@@ -359,6 +478,7 @@ while running:
                             pay_cost(cost, player["mana_pool"])
                             player["battlefield"].append(selected)
                             player["hand"].remove(selected)
+                            handle_enter_the_battlefield(selected, player) 
 
             # Tap first untapped land
             elif event.key in [pygame.K_t]:
@@ -412,8 +532,8 @@ while running:
     screen.blit(font.render(f"Current Turn: Player {current_player + 1}", True, (255,255,255)), (WIDTH // 2 - 100, 10))
     screen.blit(font.render(f"Phase: {['Untap', 'Draw', 'Main', 'Combat', 'Resolution'][current_phase]}", True, (255,255,255)), (WIDTH // 2 - 100, 40))
 
-    draw_hand(players[0]["hand"], HEIGHT - 150)
-    draw_hand(players[1]["hand"], HEIGHT - 1000)
+    draw_hand(players[0]["hand"], HEIGHT - 150, current_player == 0)
+    draw_hand(players[1]["hand"], 50, current_player == 1)
     draw_battlefield(players[0]["battlefield"], HEIGHT // 2 + 80)
     draw_battlefield(players[1]["battlefield"], HEIGHT // 2 - 220)
     draw_mana_pool(players[0]["mana_pool"], WIDTH - 150, HEIGHT - 200)
