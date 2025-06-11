@@ -33,8 +33,8 @@ class Artifact(Card):
         # Add artifact-specific attributes here
 
 class Planeswalker(Card):
-    def __init__(self, name, mana_cost, image_path, loyalty, abilities):
-        super().__init__(name, "Planeswalker", mana_cost, image_path)
+    def __init__(self,name,power, toughness, mana_cost, image_path, loyalty, abilities):
+        super().__init__(power, toughness, name, "Planeswalker", mana_cost, image_path)
         self.loyalty = loyalty
         self.abilities = abilities
         self.has_activated_ability = False

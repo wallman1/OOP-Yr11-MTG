@@ -110,20 +110,30 @@ def safe_int(value):
 
 def load_deck(card_list):
     deck = []
-    for card_data in card_list:
-        name = card_data["name"]
+    if not os.path.exists(card_list):
+        print("Deck file not found.")
+        return []
+    with open(card_list, "r") as f:
+        names = json.load(f)
+    for name in names:
+        card_data = get_card_data(name)
+        power = safe_int(card_data.get("power", 0))
+        toughness = safe_int(card_data.get("toughness", 0))
         card_type = card_data["type_line"]
         mana_cost = card_data.get("mana_cost", "")
-        image_uris = card_data.get("image_uris", {})
-        image_path = image_uris.get("normal", "")  # or however you store image_path
+        image_path = download_card_image(name)
+        print(image_path)
+        print(name)  # or however you store image_path
         if "Planeswalker" in card_type:
             loyalty = int(card_data.get("loyalty", 0))
-            abilities = card_data.get("oracle_text", "").split("\n")  # just a placeholder
-            deck.append(Planeswalker(name, mana_cost, image_path, loyalty, abilities))
+            print(loyalty)
+            abilities = card_data.get("oracle_text", "")#.split("\n")  # just a placeholder
+            deck.append(Planeswalker(name, power, toughness, mana_cost, loyalty, abilities, image_path))
         elif "Artifact" in card_type:
             deck.append(Artifact(name, mana_cost, image_path))
         else:
-            deck.append(Card(name, card_type, mana_cost, image_path))
+            print(name)
+            deck.append(Card(name, power, toughness, card_type, image_path, mana_cost))
 
     random.shuffle(deck)
     return deck
@@ -150,6 +160,7 @@ def draw_card(player):
 def draw_card_image(card, x, y):
     card.rect.topleft = (x, y)
     img = None
+    print(card.name)
     if os.path.exists(card.image_path):
         try:
             img = pygame.image.load(card.image_path)
@@ -161,9 +172,10 @@ def draw_card_image(card, x, y):
             print(f"Failed to load image {card.image_path}: {e}")
     else:
         print(f"Image path does not exist: {card.image_path}")
-    if img is None:
-        pygame.draw.rect(screen, (100, 0, 0), (x, y, 100, 140))
-        screen.blit(font.render(card.name, True, (255, 255, 255)), (x + 5, y + 60))
+    #if img is None:
+        #pygame.draw.rect(screen, (100, 0, 0), (x, y, 100, 140))
+        #print("name",card.mana_cost)
+        #screen.blit(font.render(card.name, True, (255, 255, 255)), (x + 5, y + 60))
     screen.blit(font.render(card.mana_cost, True, (255, 255, 0)), (x + 5, y + 5))
     if isinstance(card, Creature):
         screen.blit(font.render(f"{card.power}/{card.toughness}", True, (255, 255, 255)), (x + 60, y + 120))
@@ -177,7 +189,7 @@ def draw_hand(hand, y_offset, is_current_player):
         x = 20 + i * 110
         if is_current_player:
             pygame.draw.rect(screen, (255, 255, 0), (x - 5, y_offset - 5, 110, 150), 3)
-        draw_card_image(card, x, y_offset, dim=not is_current_player)
+        draw_card_image(card, x, y_offset)
 
 def draw_battlefield(field, offset_y):
     for i, card in enumerate(field):

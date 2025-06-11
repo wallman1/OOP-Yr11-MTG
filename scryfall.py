@@ -1,6 +1,7 @@
 # scryfall.py
 import requests
 import os
+import time
 
 ASSETS_DIR = "assets"
 
