@@ -12,10 +12,12 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
 pygame.display.set_caption("MTG Game with Zones, Mana, Combat")
 font = pygame.font.SysFont(None, 24)
 clock = pygame.time.Clock()
-global landplaced 
 landplaced = False
 ASSETS_DIR = "assets"
 pending_triggers = []
+selected_planeswalker = None
+ability_buttons = []  # List of tuples (Rect, ability_text)
+
 
 # Players
 players = [
@@ -121,27 +123,37 @@ def load_deck(card_list):
         toughness = safe_int(card_data.get("toughness", 0))
         card_type = card_data["type_line"]
         mana_cost = card_data.get("mana_cost", "")
-        image_path = download_card_image(name)
-        print(image_path)
-        print(name)  # or however you store image_path
-        #if "Planeswalker" in card_type:
-            #loyalty = card_data["loyalty"]
-            #print(loyalty)
-            #abilities = card_data.get("oracle_text", "").split("\n")  # just a placeholder
-            #deck.append(Planeswalker(name, power, toughness, mana_cost, loyalty, abilities, image_path))
-        if "Artifact" in card_type:
+        image_path = download_card_image(name)  # or however you store image_path
+        if "Planeswalker" in card_type:
+            # Only Planeswalker logic — assume planeswalker cards never need to be treated as anything else
+            loyalty = card_data["loyalty"]
+            abilities = card_data.get("oracle_text", "").split("\n")
+            deck.append(Planeswalker(name, power, toughness, mana_cost, image_path, loyalty, abilities))
+        elif "Artifact" in card_type:
             deck.append(Artifact(name, mana_cost, image_path))
         else:
-            print(name)
             deck.append(Card(name, power, toughness, card_type, image_path, mana_cost))
 
     random.shuffle(deck)
     return deck
 
-def parse_planeswalker_abilities(data):
-    # This function should parse the abilities from the card data
-    # For simplicity, we'll return an empty list here
-    return []
+def apply_planeswalker_ability(card, ability_text, player):
+    if ":" in ability_text:
+        loyalty_change, effect = ability_text.split(":", 1)
+        loyalty_change = int(loyalty_change.strip().replace("+", ""))
+        card.loyalty += loyalty_change
+        effect = effect.strip().lower()
+
+        if "draw a card" in effect:
+            if player["deck"]:
+                player["hand"].append(player["deck"].pop())
+        elif "deal" in effect and "damage" in effect:
+            # Later: handle targeting and dealing damage
+            print(f"{card.name} would deal damage — not implemented fully.")
+        # Add more effect parsing as needed
+    else:
+        print("Ability format error")
+
 
 def handle_enter_the_battlefield(card, player):
     if "gain life" in card.oracle_text.lower():
@@ -151,6 +163,21 @@ def handle_enter_the_battlefield(card, player):
             amount = int(match.group(1))
             addlife(player, amount)
             print(f"{card.name} triggered: Gained {amount} life.")
+
+def choose_planeswalker_ability(card, player):
+    print(f"Choose an ability for {card.name}:")
+    for idx, ability in enumerate(card.abilities):
+        print(f"{idx + 1}: {ability}")
+    
+    try:
+        choice = int(input("Enter ability number: ")) - 1
+        if 0 <= choice < len(card.abilities):
+            apply_planeswalker_ability(card, card.abilities[choice], player)
+            card.has_activated_ability = True
+        else:
+            print("Invalid choice.")
+    except ValueError:
+        print("Invalid input.")
 
 
 def draw_card(player):
@@ -176,11 +203,11 @@ def draw_card_image(card, x, y):
         #pygame.draw.rect(screen, (100, 0, 0), (x, y, 100, 140))
         #print("name",card.image_path)
         #screen.blit(font.render(card.name, True, (255, 255, 255)), (x + 5, y + 60))
-    #screen.blit(font.render(card.mana_cost, True, (255, 255, 0)), (x + 5, y + 5))
+    screen.blit(font.render(card.mana_cost, True, (255, 255, 0)), (x + 5, y + 5))
     if isinstance(card, Creature):
         screen.blit(font.render(f"{card.power}/{card.toughness}", True, (255, 255, 255)), (x + 60, y + 120))
     elif isinstance(card, Planeswalker):
-        screen.blit(font.render(f"Loyalty: {card.loyalty}", True, (255, 255, 255)), (x + 5, y + 120))
+        screen.blit(font.render(f"Loyalty: {card.loyalty}", True, (255, 0, 0)), (x + 5, y + 120))
 
 
 
@@ -384,25 +411,49 @@ while running:
                 selecting_blockers = False
 
             else:
+                if selected_planeswalker:  # Ability menu is open
+                    for rect, ability_text in ability_buttons:
+                        if rect.collidepoint(event.pos):
+                            apply_planeswalker_ability(selected_planeswalker, ability_text, players[current_player])
+                            selected_planeswalker.has_activated_ability = True
+                            selected_planeswalker = None
+                            ability_buttons.clear()
+                            break
+                else:
+                    for card in players[current_player]["battlefield"]:
+                        if isinstance(card, Planeswalker) and card.rect.collidepoint(event.pos):
+                            if not card.has_activated_ability:
+                                selected_planeswalker = card
+                                ability_buttons.clear()
+                                # Position buttons above the card
+                                for i, ability in enumerate(card.abilities):
+                                    btn_rect = pygame.Rect(card.rect.x, card.rect.y - (i + 1) * 30, 200, 25)
+                                    ability_buttons.append((btn_rect, ability))
+                            break
                 for card in players[current_player]["hand"]:
-                    print("name",card)
                     if card.rect.collidepoint(event.pos):
                         if phases[current_phase] == main_phase:
+                            dragging_card = card  # ✅ SET FIRST
+                            offset_x = card.rect.x - event.pos[0]
+                            offset_y = card.rect.y - event.pos[1]
+
                             if "land" in card.card_type:
                                 if not landplaced:
                                     landplaced = True
                                     players[current_player]["battlefield"].append(dragging_card)
+                                    players[current_player]["hand"].remove(dragging_card)
                                     trigger_card_effect(dragging_card, players[current_player])
-                                    dragging_card = card
-                                    offset_x = card.rect.x - event.pos[0]
-                                    offset_y = card.rect.y - event.pos[1]
                             else:
-                                players[current_player]["battlefield"].append(dragging_card)
-                                trigger_card_effect(dragging_card, players[current_player])
-                                dragging_card = card
-                                offset_x = card.rect.x - event.pos[0]
-                                offset_y = card.rect.y - event.pos[1]
+                                cost_list = parse_mana_cost(dragging_card.mana_cost)
+                                if can_pay_cost(cost_list, players[current_player]["mana_pool"]):
+                                    pay_cost(cost_list, players[current_player]["mana_pool"])
+                                    players[current_player]["battlefield"].append(dragging_card)
+                                    players[current_player]["hand"].remove(dragging_card)
+                                    trigger_card_effect(dragging_card, players[current_player])
+                                else:
+                                    print("Not enough mana to cast", dragging_card.name)
                             break
+
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
             for card in players[current_player]["battlefield"]:
@@ -432,17 +483,10 @@ while running:
                     cost_list = parse_mana_cost(dragging_card.mana_cost)
                     if can_pay_cost(cost_list, players[current_player]["mana_pool"]):
                         pay_cost(cost_list, players[current_player]["mana_pool"])
-                        players[current_player]["hand"].remove(dragging_card)
+                        if dragging_card in players[current_player]["hand"]:
+                            players[current_player]["hand"].remove(dragging_card)
                         players[current_player]["battlefield"].append(dragging_card)
                 dragging_card = None
-
-            if HEIGHT // 2 < dragging_card.rect.y < HEIGHT:
-                cost_list = parse_mana_cost(dragging_card.mana_cost)
-                if can_pay_cost(cost_list, players[current_player]["mana_pool"]):
-                    pay_cost(cost_list, players[current_player]["mana_pool"])
-                    players[current_player]["hand"].remove(dragging_card)
-                    players[current_player]["battlefield"].append(dragging_card)
-                    handle_enter_the_battlefield(dragging_card, players[current_player])
 
 
         elif event.type == pygame.MOUSEMOTION:
