@@ -124,12 +124,12 @@ def load_deck(card_list):
         image_path = download_card_image(name)
         print(image_path)
         print(name)  # or however you store image_path
-        if "Planeswalker" in card_type:
-            loyalty = int(card_data.get("loyalty", 0))
-            print(loyalty)
-            abilities = card_data.get("oracle_text", "")#.split("\n")  # just a placeholder
-            deck.append(Planeswalker(name, power, toughness, mana_cost, loyalty, abilities, image_path))
-        elif "Artifact" in card_type:
+        #if "Planeswalker" in card_type:
+            #loyalty = card_data["loyalty"]
+            #print(loyalty)
+            #abilities = card_data.get("oracle_text", "").split("\n")  # just a placeholder
+            #deck.append(Planeswalker(name, power, toughness, mana_cost, loyalty, abilities, image_path))
+        if "Artifact" in card_type:
             deck.append(Artifact(name, mana_cost, image_path))
         else:
             print(name)
@@ -174,9 +174,9 @@ def draw_card_image(card, x, y):
         print(f"Image path does not exist: {card.image_path}")
     #if img is None:
         #pygame.draw.rect(screen, (100, 0, 0), (x, y, 100, 140))
-        #print("name",card.mana_cost)
+        #print("name",card.image_path)
         #screen.blit(font.render(card.name, True, (255, 255, 255)), (x + 5, y + 60))
-    screen.blit(font.render(card.mana_cost, True, (255, 255, 0)), (x + 5, y + 5))
+    #screen.blit(font.render(card.mana_cost, True, (255, 255, 0)), (x + 5, y + 5))
     if isinstance(card, Creature):
         screen.blit(font.render(f"{card.power}/{card.toughness}", True, (255, 255, 255)), (x + 60, y + 120))
     elif isinstance(card, Planeswalker):
@@ -385,9 +385,9 @@ while running:
 
             else:
                 for card in players[current_player]["hand"]:
+                    print("name",card)
                     if card.rect.collidepoint(event.pos):
                         if phases[current_phase] == main_phase:
-                            print(card)
                             if "land" in card.card_type:
                                 if not landplaced:
                                     landplaced = True
