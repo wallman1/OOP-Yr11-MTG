@@ -193,8 +193,11 @@ def discard_card(player):
         player["graveyard"].append(player["hand"].pop(0))
 
 def buff_creature(card,a,b):
-    card.power += int(b)
-    card.toughness += int(a)
+    try:
+        card.power += int(b)
+        card.toughness += int(a)
+    except:
+        print("card not creature")
 
 def draw_card_image(card, x, y):
     card.rect.topleft = (x, y)
