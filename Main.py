@@ -123,21 +123,25 @@ def load_deck(card_list):
         toughness = safe_int(card_data.get("toughness", 0))
         card_type = card_data["type_line"]
         mana_cost = card_data.get("mana_cost", "")
-        image_path = download_card_image(name)  # or however you store image_path
+        image_path = download_card_image(name) 
+        oracle_text = card_data.get("oracle_text") # or however you store image_path
         if "Planeswalker" in card_type:
             # Only Planeswalker logic — assume planeswalker cards never need to be treated as anything else
             loyalty = card_data["loyalty"]
             abilities = card_data.get("oracle_text", "").split("\n")
-            deck.append(Planeswalker(name, power, toughness, mana_cost, image_path, loyalty, abilities))
+            deck.append(Planeswalker(name, mana_cost, image_path, loyalty, abilities))
         elif "Artifact" in card_type:
-            deck.append(Artifact(name, mana_cost, image_path))
+            deck.append(Artifact(name, image_path, mana_cost, oracle_text))
+        elif "Creature" in card_type:
+            deck.append(Creature(name, image_path, mana_cost, power, toughness))
         else:
-            deck.append(Card(name, power, toughness, card_type, image_path, mana_cost))
+            deck.append(Card(name, card_type, image_path, mana_cost))
 
     random.shuffle(deck)
     return deck
 
 def apply_planeswalker_ability(card, ability_text, player):
+    print("integrated")
     if ":" in ability_text:
         loyalty_change, effect = ability_text.split(":", 1)
         loyalty_change = int(loyalty_change.strip().replace("+", ""))
@@ -187,7 +191,7 @@ def draw_card(player):
 def draw_card_image(card, x, y):
     card.rect.topleft = (x, y)
     img = None
-    print(card.name)
+    #print(card.name)
     if os.path.exists(card.image_path):
         try:
             img = pygame.image.load(card.image_path)
@@ -294,7 +298,7 @@ def combat_resolution_phase():
 
 def trigger_card_effect(card, controller):
     text = card.oracle_text.lower()
-
+    print("integrated")
     # === One-time effects ===
     if "draw a card" in text:
         draw_card(controller)
@@ -316,6 +320,7 @@ def trigger_card_effect(card, controller):
 
     # === Mana abilities ===
     if "tap:" in text and "add {" in text:
+        print("match")
         color_match = re.search(r'add {([gubrw])}', text)
         if color_match:
             color = color_match.group(1).upper()
@@ -331,6 +336,21 @@ def trigger_card_effect(card, controller):
         card.keywords.append("trample")
     if "first strike" in text:
         card.keywords.append("first strike")
+
+def tap_abilities(card, player):
+    import re
+    print("integrated")
+    text = card.oracle_text.lower()
+    if "{t" in text and "add {" in text:
+        print("match")
+        color_match = re.search(r'add {([gubrw])}', text)
+        if color_match:
+            color = color_match.group(1).upper()
+            add_to_pool(1, color)
+            def ability():
+                add_to_pool(1, color)
+            card.activated_ability = ability
+            print(f"{card.name} gains ability: tap to add {color} mana")
 
 def handle_triggers(phase):
     for card in players[current_player]["battlefield"]:
@@ -355,9 +375,22 @@ def activate_planeswalker_ability(player, planeswalker, ability_index):
     else:
         print("Invalid ability index.")
 
-def activate_artifact(player, artifact):
-    # Define the effect of the artifact
-    pass
+def activate_artifact(player, card):
+    import re
+    print("integrated")
+    text = card.oracle_text.lower()
+    print(text)
+    if "{t" in text and "add {" in text:
+        if re.search(r'add {([c])}', text):
+            add_to_pool(player, 1, "C")
+        if re.search(r'add {([u])}', text):
+            add_to_pool(player, 1, "U")
+        if re.search(r'add {([b])}', text):
+            add_to_pool(player, 1, "B")
+        if re.search(r'add {([g])}', text):
+            add_to_pool(player, 1, "G")
+        if re.search(r'add {([r])}', text):
+            add_to_pool(player, 1, "R")
 
 def untap():
     resetmana(players[current_player])
@@ -412,6 +445,7 @@ while running:
 
             else:
                 if selected_planeswalker:  # Ability menu is open
+                    print("selected")
                     for rect, ability_text in ability_buttons:
                         if rect.collidepoint(event.pos):
                             apply_planeswalker_ability(selected_planeswalker, ability_text, players[current_player])
@@ -433,7 +467,7 @@ while running:
                 for card in players[current_player]["hand"]:
                     if card.rect.collidepoint(event.pos):
                         if phases[current_phase] == main_phase:
-                            dragging_card = card  # ✅ SET FIRST
+                            dragging_card = card
                             offset_x = card.rect.x - event.pos[0]
                             offset_y = card.rect.y - event.pos[1]
 
@@ -466,10 +500,12 @@ while running:
                                                                     "B" if "swamp" in name else
                                                                     "W" if "plains" in name else "C")
                     elif "Creature" in card.card_type:
+                        trigger_card_effect(card, current_player)
                         card.is_tapped = True
 
-                    elif isinstance(card, Artifact):
+                    elif "Artifact" in card.card_type:
                         activate_artifact(players[current_player], card)
+                        card.is_tapped = True
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 2:
             for card in players[current_player]["battlefield"]:
