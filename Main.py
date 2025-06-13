@@ -188,6 +188,14 @@ def draw_card(player):
     if player["library"]:
         player["hand"].append(player["library"].pop(0))
 
+def discard_card(player):
+    if player["hand"]:
+        player["graveyard"].append(player["hand"].pop(0))
+
+def buff_creature(card,a,b):
+    card.power += int(b)
+    card.toughness += int(a)
+
 def draw_card_image(card, x, y):
     card.rect.topleft = (x, y)
     img = None
@@ -300,7 +308,7 @@ def trigger_card_effect(card, controller):
     text = card.oracle_text.lower()
     print("integrated")
     # === One-time effects ===
-    if "draw a card" in text:
+    if "draw card" or "draw a card" in text:
         draw_card(controller)
 
     # === Buffs ===
@@ -444,7 +452,15 @@ while running:
                 selecting_blockers = False
 
             else:
-                if selected_planeswalker:  # Ability menu is open
+                if event.type == pygame.KEYDOWN:
+                    if card.rect.collidepoint(event.pos):
+                        if event.key in [pygame.K_b]:
+                            player = players[current_player]
+                            buff_creature(card,1,1)
+                        elif event.key in [pygame.K_b]:
+                            player = players[current_player]
+                            buff_creature(card,-1,-1)
+                elif selected_planeswalker:  # Ability menu is open
                     print("selected")
                     for rect, ability_text in ability_buttons:
                         if rect.collidepoint(event.pos):
@@ -615,6 +631,15 @@ while running:
             elif event.key in [pygame.K_j]:
                 player = players[current_player]
                 addlife(player,-1)
+
+            elif event.key in [pygame.K_f]:
+                player = players[current_player]
+                discard_card(player)
+
+            elif event.key in [pygame.K_b]:
+                player = players[current_player]
+                buff_creature(card,1,1)
+
     if players[current_player]["Health"] <= 0:
         screen.blit(font.render(f"Player {current_player+1} has died", True, (255,255,255)),(500,500))
 
