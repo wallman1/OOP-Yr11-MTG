@@ -15,19 +15,7 @@ class Creature(Card):
         super().__init__(name, "Creature", image_path, mana_cost)
         self.power = power
         self.toughness = toughness
-        self.keywords = self.extract_keywords()
-        self.keywords = []
-
-    def extract_keywords(self):
-        keywords = []
-        if "flying" in self.oracle_text.lower():
-            keywords.append("flying")
-        if "trample" in self.oracle_text.lower():
-            keywords.append("trample")
-        if "first strike" in self.oracle_text.lower():
-            keywords.append("first strike")
-        return keywords
-
+        self.keywords = set()
 class Artifact(Card):
     def __init__(self, name, image_path, mana_cost, oracle_text=""):
         super().__init__(name, "Artifact", image_path, mana_cost, oracle_text="")

@@ -2,6 +2,7 @@ import pygame
 import json
 import os
 import random
+import re
 from scryfall import download_card_image, get_card_data
 from Cards import Card, Creature, Artifact, Planeswalker
 
@@ -12,11 +13,15 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
 pygame.display.set_caption("MTG Game with Zones, Mana, Combat")
 font = pygame.font.SysFont(None, 24)
 clock = pygame.time.Clock()
+search_button = pygame.Rect(WIDTH - 220, HEIGHT // 2 - 25, 200, 40)
 landplaced = False
 ASSETS_DIR = "assets"
 pending_triggers = []
 selected_planeswalker = None
 ability_buttons = []  # List of tuples (Rect, ability_text)
+searching_card = False
+input_text = ""
+search_result_message = ""
 
 
 # Players
@@ -40,6 +45,18 @@ players = [
         "deck": "my_deck.json"
     }
 ]
+KEYWORDS = {
+    "flying": lambda card: setattr(card, "has_flying", True),
+    "trample": lambda card: setattr(card, "has_trample", True),
+    "deathtouch": lambda card: setattr(card, "has_deathtouch", True),
+    "lifelink": lambda card: setattr(card, "has_lifelink", True),
+}
+
+CONDITIONS = {
+    "if you control a creature": lambda player, opp: any(isinstance(c, Creature) for c in player["battlefield"]),
+    "if opponent has more life": lambda player, opp: opp["Health"] > player["Health"],
+    # Add more conditions as needed
+}
 current_player = 0
 attackers = []
 blockers = {}
@@ -126,10 +143,10 @@ def load_deck(card_list):
         image_path = download_card_image(name) 
         oracle_text = card_data.get("oracle_text") # or however you store image_path
         if "Planeswalker" in card_type:
-            # Only Planeswalker logic — assume planeswalker cards never need to be treated as anything else
-            loyalty = card_data["loyalty"]
+            loyalty = int(card_data.get("loyalty", 0))  # Ensure loyalty is an integer
             abilities = card_data.get("oracle_text", "").split("\n")
             deck.append(Planeswalker(name, mana_cost, image_path, loyalty, abilities))
+
         elif "Artifact" in card_type:
             deck.append(Artifact(name, image_path, mana_cost, oracle_text))
         elif "Creature" in card_type:
@@ -141,32 +158,34 @@ def load_deck(card_list):
     return deck
 
 def apply_planeswalker_ability(card, ability_text, player):
-    print("integrated")
-    if ":" in ability_text:
-        loyalty_change, effect = ability_text.split(":", 1)
-        loyalty_change = int(loyalty_change.strip().replace("+", ""))
+    import re
+    match = re.match(r"([+-]?\d+):\s*(.*)", ability_text)
+    if match:
+        loyalty_change = int(match.group(1))
+        effect = match.group(2).strip().lower()
         card.loyalty += loyalty_change
-        effect = effect.strip().lower()
+        card.has_activated_ability = True
 
+        # Effect Handling
         if "draw a card" in effect:
-            if player["deck"]:
-                player["hand"].append(player["deck"].pop())
+            draw_card(player)
+
+        elif "gain life" in effect:
+            gain_match = re.search(r"gain (\d+) life", effect)
+            if gain_match:
+                amount = int(gain_match.group(1))
+                addlife(player, amount)
+
         elif "deal" in effect and "damage" in effect:
-            # Later: handle targeting and dealing damage
-            print(f"{card.name} would deal damage — not implemented fully.")
-        # Add more effect parsing as needed
+            dmg_match = re.search(r"deal (\d+) damage", effect)
+            if dmg_match:
+                dmg = int(dmg_match.group(1))
+                players[1 - current_player]["Health"] -= dmg
+                print(f"{card.name} deals {dmg} damage to opponent")
+
+        # Add more effects as needed
     else:
-        print("Ability format error")
-
-
-def handle_enter_the_battlefield(card, player):
-    if "gain life" in card.oracle_text.lower():
-        import re
-        match = re.search(r"gain (\d+) life", card.oracle_text.lower())
-        if match:
-            amount = int(match.group(1))
-            addlife(player, amount)
-            print(f"{card.name} triggered: Gained {amount} life.")
+        print("Invalid planeswalker ability format.")
 
 def choose_planeswalker_ability(card, player):
     print(f"Choose an ability for {card.name}:")
@@ -199,30 +218,35 @@ def buff_creature(card,a,b):
     except:
         print("card not creature")
 
-def draw_card_image(card, x, y):
-    card.rect.topleft = (x, y)
+def draw_card_image(card, x=None, y=None):
     img = None
-    #print(card.name)
+
+    if x is not None and y is not None:
+        card.rect.topleft = (x, y)  # Only set position if explicitly passed
+    elif not card.rect.topleft:
+        card.rect.topleft = (0, 0)  # Ensure it's not uninitialized
+
     if os.path.exists(card.image_path):
         try:
             img = pygame.image.load(card.image_path)
             img = pygame.transform.scale(img, (100, 140))
             if card.is_tapped:
                 img = pygame.transform.rotate(img, 90)
-            screen.blit(img, (x, y))
+            screen.blit(img, card.rect.topleft)
         except pygame.error as e:
             print(f"Failed to load image {card.image_path}: {e}")
     else:
         print(f"Image path does not exist: {card.image_path}")
-    #if img is None:
-        #pygame.draw.rect(screen, (100, 0, 0), (x, y, 100, 140))
-        #print("name",card.image_path)
-        #screen.blit(font.render(card.name, True, (255, 255, 255)), (x + 5, y + 60))
-    screen.blit(font.render(card.mana_cost, True, (255, 255, 0)), (x + 5, y + 5))
+
+    # Overlay info
+    mana_text = str(card.mana_cost) if card.mana_cost else ""
+    screen.blit(font.render(mana_text, True, (255, 255, 0)), (card.rect.left + 5, card.rect.top + 5))
+    
     if isinstance(card, Creature):
-        screen.blit(font.render(f"{card.power}/{card.toughness}", True, (255, 255, 255)), (x + 60, y + 120))
+        screen.blit(font.render(f"{card.power}/{card.toughness}", True, (255, 255, 255)), (card.rect.left + 60, card.rect.top + 120))
     elif isinstance(card, Planeswalker):
-        screen.blit(font.render(f"Loyalty: {card.loyalty}", True, (255, 0, 0)), (x + 5, y + 120))
+        screen.blit(font.render(f"Loyalty: {card.loyalty}", True, (255, 0, 0)), (card.rect.left + 5, card.rect.top + 120))
+
 
 
 
@@ -262,111 +286,356 @@ def combat_phase():
 def combat_resolution_phase():
     global attackers, blockers, combat_animations
     resolve_combat_stack()
+
     for attacker in attackers:
         blocker = blockers.get(attacker)
+        damage_to_opponent = 0
+
         if blocker:
             combat_animations.append((attacker, blocker))
-            atk_dmg = attacker.power
-            blk_dmg = blocker.power
 
-            if "first strike" in attacker.name.lower():
-                blocker.toughness -= atk_dmg
+            atk_power = attacker.power
+            blk_power = blocker.power
+
+            atk_keywords = getattr(attacker, 'keywords', set())
+            blk_keywords = getattr(blocker, 'keywords', set())
+
+            # First Strike / Double Strike resolution step 1
+            if "first strike" in atk_keywords or "double strike" in atk_keywords:
+                blocker.toughness -= atk_power
+                if "deathtouch" in atk_keywords:
+                    blocker.toughness = 0
                 if blocker.toughness <= 0:
                     players[1 - current_player]["battlefield"].remove(blocker)
                     players[1 - current_player]["graveyard"].append(blocker)
                 else:
-                    attacker.toughness -= blk_dmg
+                    attacker.toughness -= blk_power
+                    if "deathtouch" in blk_keywords:
+                        attacker.toughness = 0
             else:
-                attacker.toughness -= blk_dmg
-                blocker.toughness -= atk_dmg
+                # Normal damage exchange
+                attacker.toughness -= blk_power
+                blocker.toughness -= atk_power
+                if "deathtouch" in atk_keywords:
+                    blocker.toughness = 0
+                if "deathtouch" in blk_keywords:
+                    attacker.toughness = 0
 
-            if not blocker:
-                damage = attacker.power
-                players[1 - current_player]["Health"] -= damage
-                if "lifelink" in attacker.oracle_text.lower():
-                    players[current_player]["Health"] += damage
-                    print(f"{attacker.name} lifelink: Gained {damage} life.")
-
+            # Remove dead creatures
             if attacker.toughness <= 0:
                 players[current_player]["battlefield"].remove(attacker)
                 players[current_player]["graveyard"].append(attacker)
+
             if blocker.toughness <= 0 and blocker in players[1 - current_player]["battlefield"]:
                 players[1 - current_player]["battlefield"].remove(blocker)
                 players[1 - current_player]["graveyard"].append(blocker)
+
+            # Double Strike second step (if blocker survived)
+            if "double strike" in atk_keywords and blocker in players[1 - current_player]["battlefield"]:
+                blocker.toughness -= atk_power
+                if "deathtouch" in atk_keywords:
+                    blocker.toughness = 0
+                if blocker.toughness <= 0:
+                    players[1 - current_player]["battlefield"].remove(blocker)
+                    players[1 - current_player]["graveyard"].append(blocker)
+
         else:
-            target = attacker.target  # Assume this attribute is set during attacker selection
+            # No blocker - damage goes to player or planeswalker
+            target = getattr(attacker, 'target', None)
+            damage = attacker.power
+            atk_keywords = getattr(attacker, 'keywords', set())
+
+            if "trample" in atk_keywords and attacker in blockers:
+                # Excess damage to player (if partial block logic is implemented later)
+                damage_to_opponent = attacker.power  # Full for now
+            else:
+                damage_to_opponent = attacker.power
+
             if isinstance(target, Planeswalker):
-                target.loyalty -= attacker.power
+                target.loyalty -= damage_to_opponent
                 if target.loyalty <= 0:
                     players[1 - current_player]["battlefield"].remove(target)
                     players[1 - current_player]["graveyard"].append(target)
             else:
-                players[1 - current_player]["Health"] -= attacker.power
+                players[1 - current_player]["Health"] -= damage_to_opponent
 
-    attackers = []
-    blockers = []
-    combat_animations = []
+            if "lifelink" in atk_keywords:
+                players[current_player]["Health"] += damage_to_opponent
+                print(f"{attacker.name} lifelink: Gained {damage_to_opponent} life.")
 
-def trigger_card_effect(card, controller):
-    text = card.oracle_text.lower()
-    print("integrated")
-    # === One-time effects ===
-    if "draw card" or "draw a card" in text:
-        draw_card(controller)
+    attackers.clear()
+    blockers.clear()
+    combat_animations.clear()
 
-    # === Buffs ===
+def parse_effect(text):
+    effects = []
+    lines = text.lower().split(".")
+    for line in lines:
+        line = line.strip()
+
+        # --- Triggered Effects ---
+        trigger_match = re.match(r'(when|whenever|at) (.+?), (.+)', line)
+        if trigger_match:
+            trigger_type = trigger_match.group(1)
+            trigger_condition = trigger_match.group(2).strip()
+            trigger_action = trigger_match.group(3).strip()
+            effects.append({
+                "type": "trigger",
+                "trigger": trigger_condition,
+                "effects": parse_effect(trigger_action)  # recursive for actions
+            })
+            continue
+
+        # --- Conditionals ---
+        for condition_text, condition_func in CONDITIONS.items():
+            if condition_text in line:
+                after_then = line.split(condition_text)[-1].replace("then ", "").strip()
+                sub_effects = parse_effect(after_then)
+                effects.append({"type": "conditional", "condition": condition_func, "effects": sub_effects})
+                break
+        else:
+            # --- Keywords ---
+            for keyword, action in KEYWORDS.items():
+                if keyword in line:
+                    effects.append({"type": "keyword", "keyword": keyword, "action": action})
+                    break
+
+            # --- Buffs ---
+            buff_match = re.search(r'\+(\d+)/\+(\d+)', line)
+            if buff_match:
+                p, t = map(int, buff_match.groups())
+                effects.append({"type": "buff", "power": p, "toughness": t})
+                continue
+
+            # --- Draw Cards ---
+            if "draw" in line and "card" in line:
+                draw_count = 1
+                count_match = re.search(r'draw (\d+)', line)
+                if count_match:
+                    draw_count = int(count_match.group(1))
+                effects.append({"type": "draw", "amount": draw_count})
+
+            # --- Damage ---
+            dmg_match = re.search(r'deal (\d+) damage to target player', line)
+            if dmg_match:
+                damage = int(dmg_match.group(1))
+                effects.append({"type": "damage", "target": "player", "amount": damage})
+
+    return effects
+
+
+def apply_effect(text, card, player, opponent):
+    text = text.lower()
+
+    # --- Keywords ---
+    card.keywords = set()
+    for word in ["flying", "first strike", "double strike", "trample", "lifelink", "deathtouch", "haste", "vigilance"]:
+        if word in card.oracle_text.lower():
+            card.keywords.add(word)
+
+
+    # --- Conditional: "if you control a creature" ---
+    if "if you control a creature" in text:
+        if any(isinstance(card, Creature) for card in player["battlefield"]):
+            if "draw a card" in text:
+                draw_card(player)
+
+    # --- Example Effects ---
+    if "draw a card" in text:
+        draw_card(player)
+
+    if "gain 1 life" in text:
+        addlife(player, 1)
+
+    if "deal 1 damage to any target" in text:
+        if opponent["battlefield"]:
+            for card in opponent["battlefield"]:
+                if isinstance(card, Creature):
+                    card.toughness -= 1
+                    print(f"{card.name} takes 1 damage")
+
+    if "+1/+1" in text:
+        if isinstance(card, Creature):
+            card.power += 1
+            card.toughness += 1
+
+    if "Add {G}" in text:
+        player["mana_pool"]["G"] += 1
+    if "Add {R}" in text:
+        player["mana_pool"]["R"] += 1
+    if "Add {C}" in text:
+        player["mana_pool"]["C"] += 1
+    if "tap target creature" in text.lower():
+        for card in opponent["battlefield"]:
+            if isinstance(card, Creature) and not card.tapped:
+                card.tapped = True
+                break 
+
+def check_triggered_effects(event_type, player, opponent):
+    for card in player["battlefield"]:
+        if hasattr(card, "triggers"):
+            for trigger in card.triggers:
+                if event_type in trigger["trigger"]:
+                    for effect in trigger["effects"]:
+                        apply_effect(effect, card, player, opponent)
+
+def get_tap_effect_from_text(text):
+    if not text:
+        return None
+    # Look for a line with "{T}:" indicating a tap ability
+    for line in text.split('\n'):
+        if line.strip().startswith("{T}:"):
+            # Return the effect text after the tap cost
+            return line.split(":", 1)[1].strip()
+    return None
+
+def handle_enter_the_battlefield(card, player):
+    text = getattr(card, "oracle_text", "").lower()
     import re
-    match = re.search(r'gets \+(\d+)/\+(\d+)', text)
-    if match:
-        card.power += int(match.group(1))
-        card.toughness += int(match.group(2))
+    if "gain" in text and "life" in text:
+        match = re.search(r"gain (\d+) life", text)
+        if match:
+            amount = int(match.group(1))
+            addlife(player, amount)
+            print(f"{card.name} ETB: Player gains {amount} life.")
 
-    # === Damage effects ===
-    match = re.search(r'deals (\d+) damage to any target', text)
-    if match:
-        damage = int(match.group(1))
-        # Simplified: deal to opponent
-        players[1 - current_player]["Health"] -= damage
-        print(f"{card.name} deals {damage} damage to opponent")
+    if "draw" in text and "card" in text:
+        match = re.search(r"draw (\d+)? card", text)
+        count = int(match.group(1) or 1)
+        for _ in range(count):
+            draw_card(player)
+            print(f"{card.name} ETB: Draw {count} card(s).")
 
-    # === Mana abilities ===
-    if "tap:" in text and "add {" in text:
-        print("match")
-        color_match = re.search(r'add {([gubrw])}', text)
-        if color_match:
-            color = color_match.group(1).upper()
-            def ability():
-                tap_land(controller, card, 1, color)
-            card.activated_ability = ability
-            print(f"{card.name} gains ability: tap to add {color} mana")
+def trigger_card_effect(card, player):
+    opponent = players[1 - current_player]
+    effect = parse_effect(card.oracle_text)
+    apply_effect(effect, card, player, opponent)
 
-    # === Keyword abilities ===
-    if "flying" in text:
-        card.keywords.append("flying")
-    if "trample" in text:
-        card.keywords.append("trample")
-    if "first strike" in text:
-        card.keywords.append("first strike")
+def add_keyword_menu(card):
+    keywords = ["flying", "first strike", "double strike", "trample", "lifelink", "deathtouch", "haste", "vigilance"]
+    font = pygame.font.SysFont(None, 24)
+    
+    width, height = 180, 30
+    x, y = 100, 100  # fixed menu position or customize
+    
+    menu_rects = []
+    for i, kw in enumerate(keywords):
+        rect = pygame.Rect(x, y + i * height, width, height)
+        menu_rects.append((rect, kw))
+    
+    selecting = True
+    while selecting:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mx, my = event.pos
+                for rect, kw in menu_rects:
+                    if rect.collidepoint(mx, my):
+                        card.keywords.add(kw)
+                        print(f"Added keyword '{kw}' to {card.name}")
+                        selecting = False
+                        break
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                selecting = False
+        
+        pygame.draw.rect(screen, (50, 50, 70), (x, y, width, height * len(keywords)))
+        for rect, kw in menu_rects:
+            pygame.draw.rect(screen, (70, 70, 100), rect)
+            text_surf = font.render(kw, True, (255, 255, 255))
+            screen.blit(text_surf, (rect.x + 5, rect.y + 5))
+        
+        pygame.display.flip()
+        clock.tick(30)
 
-def tap_abilities(card, player):
-    import re
-    print("integrated")
-    text = card.oracle_text.lower()
-    if "{t" in text and "add {" in text:
-        print("match")
-        color_match = re.search(r'add {([gubrw])}', text)
-        if color_match:
-            color = color_match.group(1).upper()
-            add_to_pool(1, color)
-            def ability():
-                add_to_pool(1, color)
-            card.activated_ability = ability
-            print(f"{card.name} gains ability: tap to add {color} mana")
 
-def handle_triggers(phase):
-    for card in players[current_player]["battlefield"]:
-        if "at the beginning of your upkeep" in card.oracle_text.lower() and phase == "upkeep":
-            pending_triggers.append(lambda: draw_card(players[current_player]))
+def add_counters_menu(card):
+    font = pygame.font.SysFont(None, 24)
+    width, height = 180, 30
+    x, y = 400, 100  # fixed menu position or customize
+    
+    # Counters to add - you can expand this list
+    counters = [1, 2, 3, 4, 5]
+    menu_rects = []
+    for i, cnt in enumerate(counters):
+        rect = pygame.Rect(x, y + i * height, width, height)
+        menu_rects.append((rect, cnt))
+    
+    selecting = True
+    while selecting:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mx, my = event.pos
+                for rect, cnt in menu_rects:
+                    if rect.collidepoint(mx, my):
+                        # Add +1/+1 counters
+                        if hasattr(card, "power") and hasattr(card, "toughness"):
+                            card.power += cnt
+                            card.toughness += cnt
+                            print(f"Added {cnt} +1/+1 counter(s) to {card.name}")
+                        selecting = False
+                        break
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                selecting = False
+        
+        pygame.draw.rect(screen, (50, 50, 70), (x, y, width, height * len(counters)))
+        for rect, cnt in menu_rects:
+            pygame.draw.rect(screen, (70, 70, 100), rect)
+            text_surf = font.render(f"+{cnt}/+{cnt} counter(s)", True, (255, 255, 255))
+            screen.blit(text_surf, (rect.x + 5, rect.y + 5))
+        
+        pygame.display.flip()
+        clock.tick(30)
+
+def show_select_menu(card, pos):
+    # pos = (x, y) for menu location (mouse click)
+    menu_items = ["Add Keyword", "Add +1/+1 Counter"]
+    font = pygame.font.SysFont(None, 24)
+    
+    # Create rects for menu items
+    menu_rects = []
+    width = 180
+    height = 30
+    x, y = pos
+    for i, item in enumerate(menu_items):
+        rect = pygame.Rect(x, y + i * height, width, height)
+        menu_rects.append((rect, item))
+    
+    selecting = True
+    while selecting:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mx, my = event.pos
+                for rect, item in menu_rects:
+                    if rect.collidepoint(mx, my):
+                        selecting = False
+                        if item == "Add Keyword":
+                            add_keyword_menu(card)
+                        elif item == "Add +1/+1 Counter":
+                            add_counters_menu(card)
+                        break
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                selecting = False
+        
+        # Draw menu background
+        pygame.draw.rect(screen, (50, 50, 70), (x, y, width, height * len(menu_items)))
+        
+        # Draw menu items
+        for rect, item in menu_rects:
+            pygame.draw.rect(screen, (70, 70, 100), rect)
+            text_surf = font.render(item, True, (255, 255, 255))
+            screen.blit(text_surf, (rect.x + 5, rect.y + 5))
+        
+        pygame.display.flip()
+        clock.tick(30)
+
 
 def activate_planeswalker_ability(player, planeswalker, ability_index):
     if planeswalker.has_activated_ability:
@@ -386,22 +655,18 @@ def activate_planeswalker_ability(player, planeswalker, ability_index):
     else:
         print("Invalid ability index.")
 
-def activate_artifact(player, card):
-    import re
-    print("integrated")
+def activate_artifact(card, player):
+    if not hasattr(card, "oracle_text") or not card.oracle_text:
+        return
     text = card.oracle_text.lower()
+    import re
     print(text)
-    if "{t" in text and "add {" in text:
-        if re.search(r'add {([c])}', text):
-            add_to_pool(player, 1, "C")
-        if re.search(r'add {([u])}', text):
-            add_to_pool(player, 1, "U")
-        if re.search(r'add {([b])}', text):
-            add_to_pool(player, 1, "B")
-        if re.search(r'add {([g])}', text):
-            add_to_pool(player, 1, "G")
-        if re.search(r'add {([r])}', text):
-            add_to_pool(player, 1, "R")
+    if "tap:" in text and "add {" in text and not card.is_tapped:
+        match = re.search(r"add {([gubrw])}", text)
+        if match:
+            color = match.group(1).upper()
+            tap_land(player, card, 1, color)
+
 
 def untap():
     resetmana(players[current_player])
@@ -454,36 +719,34 @@ while running:
                                 break
                 selecting_blockers = False
 
+            elif selected_planeswalker:
+                # Ability menu is open
+                for rect, ability_text in ability_buttons:
+                    if rect.collidepoint(event.pos):
+                        apply_planeswalker_ability(selected_planeswalker, ability_text, players[current_player])
+                        selected_planeswalker.has_activated_ability = True
+                        selected_planeswalker = None
+                        ability_buttons.clear()
+                        break
+
             else:
-                if event.type == pygame.KEYDOWN:
-                    if card.rect.collidepoint(event.pos):
-                        if event.key in [pygame.K_b]:
-                            player = players[current_player]
-                            buff_creature(card,1,1)
-                        elif event.key in [pygame.K_b]:
-                            player = players[current_player]
-                            buff_creature(card,-1,-1)
-                elif selected_planeswalker:  # Ability menu is open
-                    print("selected")
-                    for rect, ability_text in ability_buttons:
-                        if rect.collidepoint(event.pos):
-                            apply_planeswalker_ability(selected_planeswalker, ability_text, players[current_player])
-                            selected_planeswalker.has_activated_ability = True
-                            selected_planeswalker = None
+                # Check if a planeswalker is clicked to open abilities
+                for card in players[current_player]["battlefield"]:
+                    if isinstance(card, Planeswalker) and card.rect.collidepoint(event.pos):
+                        if not card.has_activated_ability:
+                            selected_planeswalker = card
                             ability_buttons.clear()
-                            break
-                else:
-                    for card in players[current_player]["battlefield"]:
-                        if isinstance(card, Planeswalker) and card.rect.collidepoint(event.pos):
-                            if not card.has_activated_ability:
-                                selected_planeswalker = card
-                                ability_buttons.clear()
-                                # Position buttons above the card
-                                for i, ability in enumerate(card.abilities):
-                                    btn_rect = pygame.Rect(card.rect.x, card.rect.y - (i + 1) * 30, 200, 25)
-                                    ability_buttons.append((btn_rect, ability))
-                            break
+                            for i, ability in enumerate(card.abilities):
+                                btn_rect = pygame.Rect(card.rect.x, card.rect.y - (i + 1) * 30, 200, 25)
+                                ability_buttons.append((btn_rect, ability))
+                    if card.rect.collidepoint(event.pos) and isinstance(card, Creature):
+                        show_select_menu(card, event.pos)
+                        break
+
+                # Check hand card drag or play
                 for card in players[current_player]["hand"]:
+                    card.effects = parse_effect(card.oracle_text)
+                    card.triggers = [e for e in card.effects if e["type"] == "trigger"]
                     if card.rect.collidepoint(event.pos):
                         if phases[current_phase] == main_phase:
                             dragging_card = card
@@ -495,17 +758,21 @@ while running:
                                     landplaced = True
                                     players[current_player]["battlefield"].append(dragging_card)
                                     players[current_player]["hand"].remove(dragging_card)
-                                    trigger_card_effect(dragging_card, players[current_player])
+                                    apply_effect(dragging_card.oracle_text, dragging_card, players[current_player], players[1 - current_player])
+
                             else:
                                 cost_list = parse_mana_cost(dragging_card.mana_cost)
                                 if can_pay_cost(cost_list, players[current_player]["mana_pool"]):
                                     pay_cost(cost_list, players[current_player]["mana_pool"])
                                     players[current_player]["battlefield"].append(dragging_card)
                                     players[current_player]["hand"].remove(dragging_card)
-                                    trigger_card_effect(dragging_card, players[current_player])
+                                    handle_enter_the_battlefield(card, players[current_player])
+                                    apply_effect(dragging_card.oracle_text, dragging_card, players[current_player], players[1 - current_player])
+
                                 else:
                                     print("Not enough mana to cast", dragging_card.name)
-                            break
+                        break
+
 
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
@@ -518,13 +785,10 @@ while running:
                                                                     "R" if "mountain" in name else
                                                                     "B" if "swamp" in name else
                                                                     "W" if "plains" in name else "C")
-                    elif "Creature" in card.card_type:
-                        trigger_card_effect(card, current_player)
+                    if "{T}" in card.oracle_text or "tap:" in card.oracle_text.lower():
                         card.is_tapped = True
-
-                    elif "Artifact" in card.card_type:
-                        activate_artifact(players[current_player], card)
-                        card.is_tapped = True
+                        apply_effect(card.oracle_text, card, players[current_player], players[1 - current_player])
+                    card.is_tapped=True
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 2:
             for card in players[current_player]["battlefield"]:
@@ -660,8 +924,13 @@ while running:
     draw_mana_pool(players[1]["mana_pool"], WIDTH - 150, 80)
 
     handle_combat_animations()
+    if selected_planeswalker:
+        for rect, text in ability_buttons:
+            pygame.draw.rect(screen, (70, 70, 100), rect)
+            screen.blit(font.render(text, True, (255, 255, 255)), (rect.x + 5, rect.y + 5))
 
     pygame.display.flip()
     clock.tick(30)
+
 
 pygame.quit()
