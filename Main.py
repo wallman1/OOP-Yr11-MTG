@@ -203,6 +203,7 @@ def choose_planeswalker_ability(card, player):
         print("Invalid input.")
 
 
+
 def draw_card(player):
     if player["library"]:
         player["hand"].append(player["library"].pop(0))
@@ -305,9 +306,10 @@ def combat_resolution_phase():
                 blocker.toughness -= atk_power
                 if "deathtouch" in atk_keywords:
                     blocker.toughness = 0
-                if blocker.toughness <= 0:
-                    players[1 - current_player]["battlefield"].remove(blocker)
-                    players[1 - current_player]["graveyard"].append(blocker)
+                for item in blockers:
+                    if item.toughness <= 0:
+                        players[1 - current_player]["battlefield"].remove(item)
+                        players[1 - current_player]["graveyard"].append(item)
                 else:
                     attacker.toughness -= blk_power
                     if "deathtouch" in blk_keywords:
@@ -327,7 +329,7 @@ def combat_resolution_phase():
                 players[current_player]["graveyard"].append(attacker)
 
             if blocker.toughness <= 0 and blocker in players[1 - current_player]["battlefield"]:
-                players[1 - current_player]["battlefield"].remove(blocker)
+                players[1 - current_player]["battlefield"].pop(blocker)
                 players[1 - current_player]["graveyard"].append(blocker)
 
             # Double Strike second step (if blocker survived)
@@ -710,8 +712,11 @@ while running:
                 selecting_blockers = True
 
             elif selecting_blockers:
+                count = 0
                 for card in players[1 - current_player]["battlefield"]:
                     if card.rect.collidepoint(event.pos) and not card.is_tapped and isinstance(card, Creature):
+                        count +=1
+                        blockers[count] = card
                         for atk in attackers:
                             if atk not in blockers:
                                 blockers[atk] = card
@@ -907,12 +912,15 @@ while running:
                 player = players[current_player]
                 buff_creature(card,1,1)
 
+            elif event.key in [pygame.K_q]:
+                player = players[current_player]
+
     if players[current_player]["Health"] <= 0:
         screen.blit(font.render(f"Player {current_player+1} has died", True, (255,255,255)),(500,500))
 
 
-    screen.blit(font.render(f"Player 1: {players[0]['Health']}", True, (255,255,255)), (20,10))
-    screen.blit(font.render(f"Player 2: {players[1]['Health']}", True, (255,255,255)), (20, HEIGHT - 180))
+    screen.blit(font.render(f"Player 1: {players[1]['Health']}", True, (255,255,255)), (20,10))
+    screen.blit(font.render(f"Player 2: {players[0]['Health']}", True, (255,255,255)), (20, HEIGHT - 180))
     screen.blit(font.render(f"Current Turn: Player {current_player + 1}", True, (255,255,255)), (WIDTH // 2 - 100, 10))
     screen.blit(font.render(f"Phase: {['Untap', 'Draw', 'Main', 'Combat', 'Resolution'][current_phase]}", True, (255,255,255)), (WIDTH // 2 - 100, 40))
 
