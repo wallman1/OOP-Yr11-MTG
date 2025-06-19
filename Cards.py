@@ -11,11 +11,12 @@ class Card:
         
 
 class Creature(Card):
-    def __init__(self, name, image_path, mana_cost, power, toughness):
-        super().__init__(name, "Creature", image_path, mana_cost)
+    def __init__(self, name, image_path, mana_cost, power, toughness, oracle_text=""):
+        super().__init__(name, "Creature", image_path, mana_cost, oracle_text="")
         self.power = power
         self.toughness = toughness
         self.keywords = set()
+        self.oracle_text = oracle_text
 class Artifact(Card):
     def __init__(self, name, image_path, mana_cost, oracle_text=""):
         super().__init__(name, "Artifact", image_path, mana_cost, oracle_text="")

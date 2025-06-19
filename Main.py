@@ -141,7 +141,7 @@ def load_deck(card_list):
         card_type = card_data["type_line"]
         mana_cost = card_data.get("mana_cost", "")
         image_path = download_card_image(name) 
-        oracle_text = card_data.get("oracle_text") # or however you store image_path
+        oracle_text = card_data.get("oracle_text")# or however you store image_path
         if "Planeswalker" in card_type:
             loyalty = int(card_data.get("loyalty", 0))  # Ensure loyalty is an integer
             abilities = card_data.get("oracle_text", "").split("\n")
@@ -150,9 +150,9 @@ def load_deck(card_list):
         elif "Artifact" in card_type:
             deck.append(Artifact(name, image_path, mana_cost, oracle_text))
         elif "Creature" in card_type:
-            deck.append(Creature(name, image_path, mana_cost, power, toughness))
+            deck.append(Creature(name, image_path, mana_cost, power, toughness, oracle_text))
         else:
-            deck.append(Card(name, card_type, image_path, mana_cost))
+            deck.append(Card(name, card_type, image_path, mana_cost, oracle_text))
 
     random.shuffle(deck)
     return deck
@@ -373,21 +373,27 @@ def combat_resolution_phase():
     combat_animations.clear()
 
 def parse_effect(text):
+    print(text)
     effects = []
     lines = text.lower().split(".")
+    print(lines)
     for line in lines:
         line = line.strip()
         if not line:
             continue
 
         # --- Triggered Effects ---
-        trigger_match = re.match(r'(when|whenever|at) (.+?), (.+)', line)
-        if trigger_match:
-            trigger_type = trigger_match.group(1)
-            trigger_condition = trigger_match.group(2).strip()
-            trigger_action = trigger_match.group(3).strip()
+        trigger_match = re.search(r'(when|whenever|at) (.+?)', line)
+        print(line)
+        print("none", trigger_match)
+        if "whenever" in line or "when" in line:
+            print("match")
+
+            trigger_condition = trigger_match.group(1)
+            trigger_action = trigger_match.group(2).strip()
+            
             effects.append({
-                "type": "trigger",
+                "type": trigger_condition,
                 "trigger": trigger_condition,
                 "effects": parse_effect(trigger_action)  # recurse for triggered effects
             })
@@ -396,6 +402,7 @@ def parse_effect(text):
         # --- Conditionals ---
         for condition_text, condition_func in CONDITIONS.items():
             if condition_text in line:
+                print("match")
                 after_then = line.split(condition_text)[-1].replace("then ", "").strip()
                 sub_effects = parse_effect(after_then)
                 effects.append({
@@ -408,6 +415,7 @@ def parse_effect(text):
             # --- Keywords ---
             for keyword, action in KEYWORDS.items():
                 if keyword in line:
+                    print("match")
                     effects.append({
                         "type": "keyword",
                         "keyword": keyword,
@@ -418,6 +426,7 @@ def parse_effect(text):
             # --- Buffs (e.g., +1/+1) ---
             buff_match = re.search(r'\+(\d+)/\+(\d+)', line)
             if buff_match:
+                print("match")
                 p, t = map(int, buff_match.groups())
                 effects.append({
                     "type": "buff",
@@ -428,6 +437,7 @@ def parse_effect(text):
 
             # --- Draw Cards ---
             if "draw" in line and "card" in line:
+                print("match")
                 draw_count = 1
                 count_match = re.search(r'draw (\d+)', line)
                 if count_match:
@@ -440,13 +450,14 @@ def parse_effect(text):
             # --- Damage to Player ---
             dmg_match = re.search(r'deal (\d+) damage to target player', line)
             if dmg_match:
+                print("match")
                 damage = int(dmg_match.group(1))
                 effects.append({
                     "type": "damage",
                     "target": "player",
                     "amount": damage
                 })
-
+    print(effects)
     return effects
 
 
@@ -495,7 +506,10 @@ def handle_enter_the_battlefield(card, player):
 
     if "draw" in text and "card" in text:
         match = re.search(r"draw (\d+)? card", text)
-        count = int(match.group(1) or 1)
+        try:
+            count = int(match.group(1) or 1)
+        except:
+            count = 1
         for _ in range(count):
             draw_card(players[player])
             print(f"{card.name} ETB: Draw {count} card(s).")
@@ -772,7 +786,6 @@ while running:
                                     pay_cost(cost_list, players[current_player]["mana_pool"])
                                     players[current_player]["battlefield"].append(dragging_card)
                                     players[current_player]["hand"].remove(dragging_card)
-                                    handle_enter_the_battlefield(card, players[current_player])
                                     for effect in parse_effect(dragging_card.oracle_text):
                                         apply_effect(effect, dragging_card, current_player)
 
@@ -862,7 +875,6 @@ while running:
                             pay_cost(cost, player["mana_pool"])
                             player["battlefield"].append(selected)
                             player["hand"].remove(selected)
-                            handle_enter_the_battlefield(selected, player) 
 
             # Tap first untapped land
             elif event.key in [pygame.K_t]:
