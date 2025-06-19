@@ -206,7 +206,11 @@ def choose_planeswalker_ability(card, player):
 
 def draw_card(player):
     if player["library"]:
-        player["hand"].append(player["library"].pop(0))
+        new_card = player["library"].pop()
+        player["hand"].append(new_card)
+        current_index = players.index(player)
+        check_triggered_effects("you draw a card", current_index, 1 - current_index)
+
 
 def discard_card(player):
     if player["hand"]:
@@ -306,14 +310,13 @@ def combat_resolution_phase():
                 blocker.toughness -= atk_power
                 if "deathtouch" in atk_keywords:
                     blocker.toughness = 0
-                for item in blockers:
-                    if item.toughness <= 0:
-                        players[1 - current_player]["battlefield"].remove(item)
-                        players[1 - current_player]["graveyard"].append(item)
+                if blocker.toughness <= 0:
+                    players[1 - current_player]["battlefield"].remove(blocker)
+                    players[1 - current_player]["graveyard"].append(blocker)
                 else:
                     attacker.toughness -= blk_power
-                    if "deathtouch" in blk_keywords:
-                        attacker.toughness = 0
+                if "deathtouch" in blk_keywords:
+                    attacker.toughness = 0
             else:
                 # Normal damage exchange
                 attacker.toughness -= blk_power
@@ -329,7 +332,7 @@ def combat_resolution_phase():
                 players[current_player]["graveyard"].append(attacker)
 
             if blocker.toughness <= 0 and blocker in players[1 - current_player]["battlefield"]:
-                players[1 - current_player]["battlefield"].pop(blocker)
+                players[1 - current_player]["battlefield"].remove(blocker)
                 players[1 - current_player]["graveyard"].append(blocker)
 
             # Double Strike second step (if blocker survived)
@@ -374,6 +377,8 @@ def parse_effect(text):
     lines = text.lower().split(".")
     for line in lines:
         line = line.strip()
+        if not line:
+            continue
 
         # --- Triggered Effects ---
         trigger_match = re.match(r'(when|whenever|at) (.+?), (.+)', line)
@@ -384,7 +389,7 @@ def parse_effect(text):
             effects.append({
                 "type": "trigger",
                 "trigger": trigger_condition,
-                "effects": parse_effect(trigger_action)  # recursive for actions
+                "effects": parse_effect(trigger_action)  # recurse for triggered effects
             })
             continue
 
@@ -393,20 +398,32 @@ def parse_effect(text):
             if condition_text in line:
                 after_then = line.split(condition_text)[-1].replace("then ", "").strip()
                 sub_effects = parse_effect(after_then)
-                effects.append({"type": "conditional", "condition": condition_func, "effects": sub_effects})
+                effects.append({
+                    "type": "conditional",
+                    "condition": condition_func,
+                    "effects": sub_effects
+                })
                 break
         else:
             # --- Keywords ---
             for keyword, action in KEYWORDS.items():
                 if keyword in line:
-                    effects.append({"type": "keyword", "keyword": keyword, "action": action})
+                    effects.append({
+                        "type": "keyword",
+                        "keyword": keyword,
+                        "action": action
+                    })
                     break
 
-            # --- Buffs ---
+            # --- Buffs (e.g., +1/+1) ---
             buff_match = re.search(r'\+(\d+)/\+(\d+)', line)
             if buff_match:
                 p, t = map(int, buff_match.groups())
-                effects.append({"type": "buff", "power": p, "toughness": t})
+                effects.append({
+                    "type": "buff",
+                    "power": p,
+                    "toughness": t
+                })
                 continue
 
             # --- Draw Cards ---
@@ -415,71 +432,46 @@ def parse_effect(text):
                 count_match = re.search(r'draw (\d+)', line)
                 if count_match:
                     draw_count = int(count_match.group(1))
-                effects.append({"type": "draw", "amount": draw_count})
+                effects.append({
+                    "type": "draw",
+                    "amount": draw_count
+                })
 
-            # --- Damage ---
+            # --- Damage to Player ---
             dmg_match = re.search(r'deal (\d+) damage to target player', line)
             if dmg_match:
                 damage = int(dmg_match.group(1))
-                effects.append({"type": "damage", "target": "player", "amount": damage})
+                effects.append({
+                    "type": "damage",
+                    "target": "player",
+                    "amount": damage
+                })
 
     return effects
 
 
-def apply_effect(text, card, player, opponent):
-    text = text.lower()
 
-    # --- Keywords ---
-    card.keywords = set()
-    for word in ["flying", "first strike", "double strike", "trample", "lifelink", "deathtouch", "haste", "vigilance"]:
-        if word in card.oracle_text.lower():
-            card.keywords.add(word)
+def apply_effect(effect, source_card, controller_index):
+    player = players[controller_index]
+    if effect["type"] == "draw":
+        for _ in range(effect["amount"]):
+            draw_card(player)
+    elif effect["type"] == "buff":
+        source_card.power += effect["power"]
+        source_card.toughness += effect["toughness"]
+    elif effect["type"] == "damage":
+        player["life"] -= effect["amount"]
+    elif effect["type"] == "keyword":
+        source_card.keywords.append(effect["keyword"])
 
-
-    # --- Conditional: "if you control a creature" ---
-    if "if you control a creature" in text:
-        if any(isinstance(card, Creature) for card in player["battlefield"]):
-            if "draw a card" in text:
-                draw_card(player)
-
-    # --- Example Effects ---
-    if "draw a card" in text:
-        draw_card(player)
-
-    if "gain 1 life" in text:
-        addlife(player, 1)
-
-    if "deal 1 damage to any target" in text:
-        if opponent["battlefield"]:
-            for card in opponent["battlefield"]:
-                if isinstance(card, Creature):
-                    card.toughness -= 1
-                    print(f"{card.name} takes 1 damage")
-
-    if "+1/+1" in text:
-        if isinstance(card, Creature):
-            card.power += 1
-            card.toughness += 1
-
-    if "Add {G}" in text:
-        player["mana_pool"]["G"] += 1
-    if "Add {R}" in text:
-        player["mana_pool"]["R"] += 1
-    if "Add {C}" in text:
-        player["mana_pool"]["C"] += 1
-    if "tap target creature" in text.lower():
-        for card in opponent["battlefield"]:
-            if isinstance(card, Creature) and not card.tapped:
-                card.tapped = True
-                break 
-
-def check_triggered_effects(event_type, player, opponent):
+def check_triggered_effects(event_type, player_index, opponent_index):
+    player = players[player_index]
     for card in player["battlefield"]:
         if hasattr(card, "triggers"):
             for trigger in card.triggers:
                 if event_type in trigger["trigger"]:
                     for effect in trigger["effects"]:
-                        apply_effect(effect, card, player, opponent)
+                        apply_effect(effect, card, player_index)
 
 def get_tap_effect_from_text(text):
     if not text:
@@ -505,13 +497,13 @@ def handle_enter_the_battlefield(card, player):
         match = re.search(r"draw (\d+)? card", text)
         count = int(match.group(1) or 1)
         for _ in range(count):
-            draw_card(player)
+            draw_card(players[player])
             print(f"{card.name} ETB: Draw {count} card(s).")
 
 def trigger_card_effect(card, player):
     opponent = players[1 - current_player]
     effect = parse_effect(card.oracle_text)
-    apply_effect(effect, card, player, opponent)
+    apply_effect(effect, card, player)
 
 def add_keyword_menu(card):
     keywords = ["flying", "first strike", "double strike", "trample", "lifelink", "deathtouch", "haste", "vigilance"]
@@ -693,11 +685,9 @@ for p in players:
 
 dragging_card = None
 offset_x = offset_y = 0
-
 running = True
 while running:
     screen.fill((33, 30, 40))
-
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
@@ -734,6 +724,16 @@ while running:
                         ability_buttons.clear()
                         break
 
+            elif pygame.key.get_mods() & pygame.KMOD_SHIFT:
+                # Check all zones for deletable cards
+                for zone in ["battlefield", "hand"]:
+                    for card in players[current_player][zone]:
+                        if card.rect.collidepoint(event.pos):
+                            players[current_player][zone].remove(card)
+                            print(f"Deleted {card.name} from {zone}")
+                            break  # Exit after deleting one card
+                continue
+
             else:
                 # Check if a planeswalker is clicked to open abilities
                 for card in players[current_player]["battlefield"]:
@@ -763,7 +763,8 @@ while running:
                                     landplaced = True
                                     players[current_player]["battlefield"].append(dragging_card)
                                     players[current_player]["hand"].remove(dragging_card)
-                                    apply_effect(dragging_card.oracle_text, dragging_card, players[current_player], players[1 - current_player])
+                                    for effect in parse_effect(dragging_card.oracle_text):
+                                        apply_effect(effect, dragging_card, current_player)
 
                             else:
                                 cost_list = parse_mana_cost(dragging_card.mana_cost)
@@ -772,7 +773,8 @@ while running:
                                     players[current_player]["battlefield"].append(dragging_card)
                                     players[current_player]["hand"].remove(dragging_card)
                                     handle_enter_the_battlefield(card, players[current_player])
-                                    apply_effect(dragging_card.oracle_text, dragging_card, players[current_player], players[1 - current_player])
+                                    for effect in parse_effect(dragging_card.oracle_text):
+                                        apply_effect(effect, dragging_card, current_player)
 
                                 else:
                                     print("Not enough mana to cast", dragging_card.name)
@@ -792,7 +794,9 @@ while running:
                                                                     "W" if "plains" in name else "C")
                     if "{T}" in card.oracle_text or "tap:" in card.oracle_text.lower():
                         card.is_tapped = True
-                        apply_effect(card.oracle_text, card, players[current_player], players[1 - current_player])
+                        for effect in parse_effect(card.oracle_text):
+                            print(effect)
+                            apply_effect(effect, card, current_player)
                     card.is_tapped=True
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 2:
