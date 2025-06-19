@@ -42,7 +42,9 @@ A fully functional Magic: The Gathering tabletop simulator built in Python using
    - Number keys (0–5): Add different mana types to pool  
    - `L` / `J`: Increase or decrease life  
    - `F`: Discard card  
-   - `SHIFT + Left Click`: Delete card from hand or battlefield  
+   - `SHIFT + Left Click`: Delete card from hand or battlefield
+   - `Right Clict`: Tap a card
+   - `Middle Click`: Untap a card
 
 ---
 

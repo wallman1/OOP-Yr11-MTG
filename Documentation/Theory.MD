@@ -132,6 +132,9 @@ In total, Sprint One laid a strong foundation for an operable MTG simulator. The
 ## Structure Chart
 ![alt text](/Documentation/Screenshot%202025-06-18%20200331.png)
 
+## Storyboard
+![alt text](/Documentation/Untitled1.png)
+
 ## Pseudocode
 ### Main Loop
 procedure MAIN_GAME_LOOP

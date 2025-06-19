@@ -1213,8 +1213,8 @@ while running:
         screen.blit(font.render(f"Player {current_player+1} has died", True, (255,255,255)), (500, 500))
 
     # Display current game stats
-    screen.blit(font.render(f"Player 1: {players[1]['Health']}", True, (255,255,255)), (20, 10))
-    screen.blit(font.render(f"Player 2: {players[0]['Health']}", True, (255,255,255)), (20, HEIGHT - 180))
+    screen.blit(font.render(f"Player 2: {players[1]['Health']}", True, (255,255,255)), (20, 10))
+    screen.blit(font.render(f"Player 1: {players[0]['Health']}", True, (255,255,255)), (20, HEIGHT - 180))
     screen.blit(font.render(f"Current Turn: Player {current_player + 1}", True, (255,255,255)), (WIDTH // 2 - 100, 10))
     screen.blit(font.render(f"Phase: {['Untap', 'Draw', 'Main', 'Combat', 'Resolution'][current_phase]}", True, (255,255,255)), (WIDTH // 2 - 100, 40))
 
