@@ -251,3 +251,95 @@ The program successfully handled most key use-cases, such as adding counters to 
 Code quality continued to improve in Sprint 3. Naming conventions remained consistent, and functions were written with better separation of concerns. Complex effects were broken into subroutines, which improves readability and maintainability. However, the code still contains some tight coupling between the UI and game logic, and deeper documentation is needed to support long-term scalability. While comments have improved, some sections (especially newer functions) still lack detailed explanations.
 
 Looking ahead to the next stage, improvements should focus on implementing a basic stack system for managing triggered and activated abilities, improving save/load functionality, and enhancing card search and filtering features. Structurally, further refactoring should aim to decouple UI rendering from game mechanics, introduce a clearer event system, and better organize the codebase into modular files. These changes will not only improve performance and maintainability but also enable more complex interactions in future updates.
+
+## Start of Sprint Potential Improvements
+In starting Sprint 4, several significant additions have been identified to be made to the functionality and playability of the Magic: The Gathering collectible card game simulator. Among the largest areas of concentration is the full integration of triggered effects—more specifically those that occur when a card comes into play (ETB effects, as they are more commonly referred to). These include effects such as drawing cards, gaining life, or modifying creature stats the moment a card is played. Other enhancements include more apparent combat graphics, such as highlighting tapped cards and graphically linking attackers to blockers. The graveyard zone will also be shown, so players can monitor destroyed or discarded cards throughout a game. 
+### Parsing System Enhancements
+Enhancements to the parsing system will allow the system to better understand keyword abilities like lifelink, deathtouch, and haste. Furthermore, a core stack system will be implemented for managing the order and resolution of activated and triggered effects.
+
+### Integration with Existing Codebase
+The enhancements will be integrated into the existing codebase via modular extensions to current systems. The parse_effect() function, already utilized for pulling out card effects, will be expanded to also identify ETB triggers and other conditional effects. They will be stored as structured data in each card's triggers attribute and processed automatically whenever a card is entering the battlefield. For combat and visual updates, there will be new drawing logic added to the draw_card_image() and handle_combat_animations() functions, but without altering core rendering logic. The visible graveyard will be completed the same way as the hand and battlefield areas to ensure user interface consistency. In order to handle effect resolution, a global stack list will be maintained and resolved in the resolution phase. This step-by-step methodology ensures that enhancements can be completed incrementally while preserving stability and backwards compatibility with the existing feature set.
+
+## Sprint 4 Review
+### Evaluation of Functional and Non-Functional Requirements
+
+As of the end of Sprint 4, the project has met most of the functional requirements set during the planning stage. Most notable features such as turn-based mechanics, resolution of combat, generation of mana, and interaction of cards are all functioning as intended. Adding effect parsing and triggerd abilities (e.g., "enter the battlefield" effects and lifelink) greatly advanced the program's ability to simulate a game of Magic: The Gathering. The non-functional requirements, such as responsiveness, fullscreen support, and mouse-based interaction support, have also been fulfilled. The simulator runs stably at 30 FPS, does not consume any visible memory leaks, and provides a smooth gaming experience.
+
+### Performance Against Key Use-Cases
+
+Key use-cases—such as playing a creature, playing lands to acquire mana, attacking with creatures, and resolving Planeswalker abilities—are all correctly implemented. Cards now correctly trigger effects on entering the battlefield, such as lifegain and card draw, which were clearly defined in the original use-case tests. The game loop correctly interacts with input/output, logging the clicks for card choosing, drag-and-drop, and combat targeting as expected. The concept of a mana pool precludes wrong plays by allowing appropriate use of resources. During testing, all the use-case scenarios executed without crashes or unhandled exceptions, and user feedback indicated that basic gameplay flows were intuitive.
+
+### Program Behaviour and Input/Output Handling
+
+The program performs as desired in nearly all of the tested cases. Cards are dragnable, castable, and activatable with minimal bugs. Handling of input is responsive and accurate—mouse movement adequately maps to card locations, and the game behaves predictably in reaction to phase transitions and user input. The one issue is sporadic "ghost image" visibility when cards are being dragged, which could be related to improper handling of card rectangles during click-and-drag events. However, they don't make too much of a difference in gameplay.
+
+### Code Quality: Readability, Structure, and Maintainability
+
+Code is well-structured, modular and separates logic (e.g., parsing of effects, combat resolution) from rendering (e.g., draw_card_image, draw_hand). Naming conventions are good for the most part, and functions are well-scoped and named. Reusable and extensible regions are primary ones like parse_effect, apply_effect, and combat logic. Certain codebase recommendations would be enhanced by further readability-improving comments, especially where more complex functions like trigger resolution and event-based combat implementation are the case. Refactoring duplicated logic (for instance, card casting and event application) into smaller, more specialized helper functions can improve maintainability.
+
+### The Next Development Stage Improvements
+
+In case of additional complications, some of the key improvements are recommended. Feature-wise, the resolution mechanism for the stack can be expanded to allow for player response to spells and abilities and thus more realistic gameplay. Multiplayer or network functionality could also be included. From the code quality perspective, redundant logic needs to be refactored, and a more object-oriented design can be included, encapsulating player and game-stage logic within classes. Unit tests can be written to ensure important functions behave as expected under different conditions. Lastly, optimizing the card loading system to cache images and card information better would reduce overhead and improve scalability.
+
+## Final Evaluation
+### System Upgrades and Effect on Player Experience
+There are several different ways that I could upgrade this Magic: The Gathering simulator in the future. One of the most significant would be adding a "stack" system. When a player in real Magic plays a spell or uses an ability, it is added into a stack where other players can reply. The game currently doesn't support that. Having a stack system would allow players to play more dynamically and make decisions on the basis of what their opponent is playing off of, for instance, counterspelling. This would more accurately mimic how it actually is in real life.
+
+I can also make the interface richer with additional animations and sound. For example, flashing a lightning bolt icon when dealing damage, or an audio tap when a card is tapped. Effects like "draw a card" or "gain 1 life" just happen without any sound or visual effects, and this takes away from the game's entertainment factor. Additional visual feedback and sound effects would allow for greater accessibility and more enjoyment for players.
+
+### Impact Analysis:
+Positive impacts: These would make the game more enjoyable and more playable. The players would feel more in control and involved in what's happening. It would allow new players to pick up the rules more easily by showing cause and effect directly.
+
+Negative effects: These additions would increase the game's complexity. Novice players might find the new features confusing at first. It would also slow down the game if not optimized, especially with extra animations or memory usage.
+
+### Assessment of Requirements and Specifications
+The system meets most of the functional and non-functional requirements established in the planning stage. According to the planning document, the primary goals were:
+
+ - Give players the capacity to draw cards and build a battlefield
+
+ - Give fighting with tapping, harm, and blockers
+
+ - Give turn phases and mana control
+
+ - Give abilities and effects through Oracle text (e.g., "draw a card", "+1/+1", "enter the battlefield")
+
+These goals have been achieved. For example, cards can be drawn from the hand, mana is tracked, and effects burn properly when a card enters the battlefield. Planeswalker powers can be selected using a button configuration too. The game responds well to input and plays well in fullscreen mode, achieving the non-functional criteria of usability and performance.
+
+Use-case testing reveals that all gameplay scenarios, such as summoning a creature, attacking, or playing a land, all work properly. A small bug is that occasionally a "ghost" image occurs when dragging cards, but it doesn't interrupt gameplay. In general, the game acts as intended and processes inputs and gameplay states properly. 
+
+### Evaluation of Project Management
+Looking back at my Gantt Chart, I had completed most of my milestones on or prior to the dates that I had established. Sprint 1 was establishing the interface and basic card handling, which I completed quickly. Sprint 2 was adding in phases, tap, and combat, which I completed ahead of schedule. Sprint 3 was longer because I was breaking down and coding the effects from the Oracle text, which was complex.
+
+![alt text](/Documentation/Screenshot%202025-06-19%20194326.png)
+
+Sprint 4 was spent refining and expanding on those effects and allowing for interactions like lifelink, triggered effects, and planeswalker assistance. These were completed mostly on time, although I was unable to include stack interaction due to time limitations.
+
+Reflecting on my commit history and version history, I always delivered, enhancing aspects such as combat, triggered abilities, and responsiveness in the UI throughout sprints. My planning was also flexible, enabling me to make adjustments whenever new issues arose.
+
+### Peer Evaluation and Feedback
+Two of my peers tested my project and provided the following feedback in a PMI (Plus, Minus, Implication) format:
+
+
+
+This feedback led me to realize that while the game logic is good, user interface and experience can be improved. In future development, better user feedback and greater visual or auditory guidance are required.
+
+### Justification of Object-Oriented Programming (OOP) Features
+This project was executed using the assistance of OOP (Object-Oriented Programming) to make the code easier to maintain, modify, and expand. I used classes to keep like data and behaviors together to make sure that I kept the game structure simple and easy to read.
+
+#### Card Class
+The Card class is the superclass of all types of cards. It has important properties like the card's name, card type, mana cost, oracle text, image, and screen position. It also has a rect that is used for collision detection through the mouse and is accessed throughout the game for events. All the other classes of cards inherit from this class, so all these properties are available to them. This is an example of how inheritance is applied, which is one of the basic OOP practices.
+
+#### Creature(Card) Class
+Creature is a subclass of Card and has attributes like power, toughness, is_tapped, and attacking. Creature also has combat interaction logic, for example, whether it can attack or block. Moving the creature into its own class meant I did not jam the base Card class with creature-related logic. This is encapsulation—organizing code according to function.
+
+#### Planeswalker(Card) Class
+Planeswalkers also have their own behaviors, i.e., loyalty points and special abilities that are used once a turn. This class contains loyalty and a flag to track if the ability was utilized. It also contains a list of ability texts, which are clickable buttons on the GUI. Having all of that be its own class allowed me to isolate the logic from regular cards and make it easier so that it's simpler to test. This also makes it possible for me to reuse this class with different planeswalker cards without reusing code.
+
+#### Artifact(Card) Class
+Artifacts are special cards with passive or activated effects. They also inherit from Card, so they also have the same display and interaction logic. Their own behavior, like tapping to produce mana or enhancing creatures, can be built on top. This enables me to work with new types of cards without altering the organization of the balance of the code. This is one instance of polymorphism—where a subclass such as Artifact can be substituted for the Card class but function differently.
+
+#### Effect Parsing System
+Effects like "draw a card", "gain 1 life", "tap: add {G}", and "when this enters the battlefield" are all handled by parsing the oracle text into dictionaries, and then applying them using a generic apply_effect() function. It's not a class itself, but it works with the classes to provide the system with dynamic and extensible behavior. It causes cards to behave differently based on their text without requiring special-case code for every one.
+
+#### Conclusion on OOP
+Using OOP made the project much easier to work with. Every card type is well-structured and has a clear purpose. I was able to implement new features like planeswalkers and effects effortlessly without needed to rewrite code. If I needed to implement other card types like instants or sorceries, I could create new classes in the same style. This tended to keep the code readable, testable, and reusable—exactly what good OOP design is meant to achieve.

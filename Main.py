@@ -383,21 +383,19 @@ def parse_effect(text):
             continue
 
         # --- Triggered Effects ---
-        trigger_match = re.search(r'(when|whenever|at) (.+?)', line)
-        print(line)
-        print("none", trigger_match)
-        if "whenever" in line or "when" in line:
-            print("match")
-
-            trigger_condition = trigger_match.group(1)
-            trigger_action = trigger_match.group(2).strip()
+        trigger_match = re.match(r'(when|whenever|at) (.+?), (.+)', line)
+        if trigger_match:
+            trigger_type = trigger_match.group(1)
+            trigger_condition = trigger_match.group(2).strip()
+            trigger_action = trigger_match.group(3).strip()
             
             effects.append({
-                "type": trigger_condition,
+                "type": "trigger",
                 "trigger": trigger_condition,
-                "effects": parse_effect(trigger_action)  # recurse for triggered effects
+                "effects": parse_effect(trigger_action)  # recurse on action
             })
             continue
+
 
         # --- Conditionals ---
         for condition_text, condition_func in CONDITIONS.items():
@@ -775,8 +773,6 @@ while running:
                             if "land" in card.card_type:
                                 if not landplaced:
                                     landplaced = True
-                                    players[current_player]["battlefield"].append(dragging_card)
-                                    players[current_player]["hand"].remove(dragging_card)
                                     for effect in parse_effect(dragging_card.oracle_text):
                                         apply_effect(effect, dragging_card, current_player)
 
@@ -784,8 +780,6 @@ while running:
                                 cost_list = parse_mana_cost(dragging_card.mana_cost)
                                 if can_pay_cost(cost_list, players[current_player]["mana_pool"]):
                                     pay_cost(cost_list, players[current_player]["mana_pool"])
-                                    players[current_player]["battlefield"].append(dragging_card)
-                                    players[current_player]["hand"].remove(dragging_card)
                                     for effect in parse_effect(dragging_card.oracle_text):
                                         apply_effect(effect, dragging_card, current_player)
 
@@ -819,14 +813,32 @@ while running:
 
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if dragging_card:
-                if (current_player == 0 and HEIGHT // 2 < dragging_card.rect.y < HEIGHT) or \
-                (current_player == 1 and 0 < dragging_card.rect.y < HEIGHT // 2):
-                    cost_list = parse_mana_cost(dragging_card.mana_cost)
-                    if can_pay_cost(cost_list, players[current_player]["mana_pool"]):
-                        pay_cost(cost_list, players[current_player]["mana_pool"])
-                        if dragging_card in players[current_player]["hand"]:
-                            players[current_player]["hand"].remove(dragging_card)
-                        players[current_player]["battlefield"].append(dragging_card)
+                # Detect battlefield drop zone
+                drop_zone = (
+                    (current_player == 0 and HEIGHT // 2 < dragging_card.rect.y < HEIGHT) or
+                    (current_player == 1 and 0 < dragging_card.rect.y < HEIGHT // 2)
+                )
+
+                if drop_zone:
+                    if "land" in dragging_card.card_type.lower():
+                        if not landplaced:
+                            landplaced = True
+                            players[current_player]["battlefield"].append(dragging_card)
+                            if dragging_card in players[current_player]["hand"]:
+                                players[current_player]["hand"].remove(dragging_card)
+                            for effect in parse_effect(dragging_card.oracle_text):
+                                apply_effect(effect, dragging_card, current_player)
+                    else:
+                        cost_list = parse_mana_cost(dragging_card.mana_cost)
+                        if can_pay_cost(cost_list, players[current_player]["mana_pool"]):
+                            pay_cost(cost_list, players[current_player]["mana_pool"])
+                            if dragging_card in players[current_player]["hand"]:
+                                players[current_player]["hand"].remove(dragging_card)
+                            players[current_player]["battlefield"].append(dragging_card)
+                            for effect in parse_effect(dragging_card.oracle_text):
+                                apply_effect(effect, dragging_card, current_player)
+                        else:
+                            print("Not enough mana to cast", dragging_card.name)
                 dragging_card = None
 
 
